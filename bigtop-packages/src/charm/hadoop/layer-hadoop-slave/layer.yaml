@@ -1,0 +1,2 @@
+repo: git@github.com:juju-solutions/layer-apache-bigtop-slave.git
+includes: ['layer:apache-bigtop-datanode', 'layer:apache-bigtop-nodemanager']
