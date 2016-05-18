@@ -1,4 +1,4 @@
-name: apache-bigtop-namenode
+name: hadoop-namenode
 summary: HDFS master (NameNode) for Apache Bigtop platform
 maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
 description: >

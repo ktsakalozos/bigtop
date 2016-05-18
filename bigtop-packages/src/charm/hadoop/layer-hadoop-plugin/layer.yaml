@@ -3,3 +3,6 @@ includes: ['layer:apache-bigtop-base', 'interface:hadoop-plugin', 'interface:dfs
 options:
   basic:
     use_venv: true
+metadata:
+  deletes:
+    - requires.java

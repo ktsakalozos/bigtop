@@ -48,10 +48,16 @@ demands.
 In this deployment, the aforementioned components are deployed on separate
 units. To deploy this bundle, simply use:
 
-    juju quickstart bigtop-processing-mapreduce
+    juju deploy hadoop-processing
 
-See `juju quickstart --help` for deployment options, including machine
-constraints and how to deploy a locally modified version of `bundle.yaml`.
+This will deploy this bundle and all the charms from the [charm store][].
+
+> Note: With Juju versions < 2.0, you will need to use [juju-deployer][] to
+deploy the bundle.
+
+You can also build all of the charms from their source layers in the
+[Bigtop repository][].  See the [charm package README][] for instructions
+to build and deploy the charms.
 
 The default bundle deploys three slave nodes and one node of each of
 the other services. To scale the cluster, use:
@@ -59,6 +65,11 @@ the other services. To scale the cluster, use:
     juju add-unit slave -n 2
 
 This will add two additional slave nodes, for a total of five.
+
+[charm store]: https://jujucharms.com/
+[Bigtop repository]: https://github.com/apache/bigtop
+[charm package README]: ../../../bigtop-packages/src/charm/README.md
+[juju-deployer]: https://pypi.python.org/pypi/juju-deployer/
 
 
 ## Status and Smoke Test
@@ -160,6 +171,7 @@ However, each benchmark is also an action that can be called manually:
 Charms can be deployed in environments with limited network access. To deploy
 in this environment, you will need a local mirror to serve required packages.
 
+
 ### Mirroring Packages
 
 You can setup a local mirror for apt packages using squid-deb-proxy.
@@ -178,6 +190,5 @@ For instructions on configuring juju to use this, see the
 - [Apache Bigtop issue tracking](http://bigtop.apache.org/issue-tracking.html)
 - [Apache Bigtop mailing lists](http://bigtop.apache.org/mail-lists.html)
 - [Juju Bigtop charms](https://jujucharms.com/q/apache/bigtop)
-- [Juju Bigtop bundle issues](https://github.com/juju-solutions/bundle-bigtop-processing-mapreduce/issues)
 - [Juju mailing list](https://lists.ubuntu.com/mailman/listinfo/juju)
 - [Juju community](https://jujucharms.com/community)

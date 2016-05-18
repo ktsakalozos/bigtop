@@ -1,4 +1,4 @@
-name: apache-bigtop-plugin
+name: hadoop-plugin
 summary: Simplified connection point for Apache Bigtop platform
 maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
 description: >

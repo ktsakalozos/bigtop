@@ -30,7 +30,10 @@ This charm is intended to be deployed via one of the
 [apache bigtop bundles](https://jujucharms.com/u/bigdata-dev/#bundles).
 For example:
 
-    juju quickstart bigtop-processing-mapreduce
+    juju deploy hadoop-processing
+
+> Note: With Juju versions < 2.0, you will need to use [juju-deployer][] to
+deploy the bundle.
 
 This will deploy the Apache Bigtop platform with a workload node
 preconfigured to work with the cluster.
@@ -40,6 +43,9 @@ Simply deploy Pig and attach it to the same plugin:
 
     juju deploy apache-pig pig
     juju add-relation plugin pig
+
+
+[juju-deployer]: https://pypi.python.org/pypi/juju-deployer/
 
 
 ## Status and Smoke Test
