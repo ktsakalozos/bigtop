@@ -1,0 +1,7 @@
+includes:
+  - 'layer:apache-bigtop-base'
+  - 'interface:dfs'
+  - 'interface:ignite-hadoop'
+options:
+  basic:
+    use_venv: true
