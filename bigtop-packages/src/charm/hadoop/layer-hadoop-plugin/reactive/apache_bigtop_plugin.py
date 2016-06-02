@@ -14,14 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from charms.reactive import is_state, remove_state, set_state, when, when_any, when_none, when_not
+from charms.reactive import is_state, set_state
+from charms.reactive import when, when_any, when_none, when_not
 from charmhelpers.core import hookenv
 from charms.layer.apache_bigtop_base import Bigtop, get_hadoop_version
 
 
-@when('hadoop-plugin.joined')
+@when_any('hadoop-plugin.joined', 'hadoop-rest.joined')
 @when_not('namenode.joined')
-def blocked(principal):
+def blocked():
     hookenv.status_set('blocked', 'missing required namenode relation')
 
 
@@ -57,26 +58,44 @@ def send_nn_spec(principal, namenode):
     namenode.set_local_spec(bigtop.spec())
 
 
+@when('hadoop-rest.joined', 'namenode.joined')
+@when_not('namenode.ready')
+def disable_spec_matching(principal, namenode):
+    namenode.set_local_spec({})
+
+
 @when('apache-bigtop-plugin.hdfs.installed')
-@when('hadoop-plugin.joined', 'namenode.ready')
-@when_not('apache-bigtop-plugin.hdfs.ready')
-def send_principal_hdfs_info(principal, namenode):
+@when('namenode.ready')
+@when('hadoop-plugin.joined')
+def send_plugin_hdfs_info(principal, namenode):
     """Send HDFS data when the namenode becomes ready."""
     principal.set_installed(get_hadoop_version())
     principal.set_hdfs_ready(namenode.namenodes(), namenode.port())
-    set_state('apache-bigtop-plugin.hdfs.ready')
 
 
-@when('apache-bigtop-plugin.hdfs.ready')
-@when('hadoop-plugin.joined')
 @when_not('namenode.ready')
-def clear_hdfs_ready(principal):
+@when('hadoop-plugin.joined')
+def clear_plugin_hdfs_ready(principal):
     principal.clear_hdfs_ready()
-    remove_state('apache-bigtop-plugin.hdfs.ready')
-    remove_state('apache-bigtop-plugin.hdfs.installed')
 
 
-@when('bigtop.available', 'hadoop-plugin.joined', 'namenode.joined', 'resourcemanager.joined')
+@when('namenode.ready')
+@when('hadoop-rest.joined')
+def send_rest_hdfs_info(principal, namenode):
+    """Send HDFS data when the namenode becomes ready."""
+    principal.set_hdfs_ready(namenode.namenodes(), namenode.port())
+
+
+@when_not('namenode.ready')
+@when('hadoop-rest.joined')
+def clear_rest_hdfs_ready(principal):
+    principal.clear_hdfs_ready()
+
+
+@when('bigtop.available',
+      'hadoop-plugin.joined',
+      'namenode.joined',
+      'resourcemanager.joined')
 @when_not('apache-bigtop-plugin.yarn.installed')
 def install_hadoop_client_yarn(principal, namenode, resourcemanager):
     if namenode.namenodes() and resourcemanager.resourcemanagers():
@@ -94,7 +113,8 @@ def install_hadoop_client_yarn(principal, namenode, resourcemanager):
 
 
 @when('apache-bigtop-plugin.yarn.installed')
-@when('hadoop-plugin.joined', 'resourcemanager.joined')
+@when('hadoop-plugin.joined',
+      'resourcemanager.joined')
 @when_not('resourcemanager.ready')
 def send_rm_spec(principal, resourcemanager):
     """Send our plugin spec so the resourcemanager can become ready."""
@@ -103,31 +123,44 @@ def send_rm_spec(principal, resourcemanager):
 
 
 @when('apache-bigtop-plugin.yarn.installed')
-@when('hadoop-plugin.joined', 'resourcemanager.ready')
-@when_not('apache-bigtop-plugin.yarn.ready')
-def send_principal_yarn_info(principal, resourcemanager):
+@when('resourcemanager.ready')
+@when('hadoop-plugin.joined')
+def send_plugin_yarn_info(principal, resourcemanager):
     """Send YARN data when the resourcemanager becomes ready."""
     version = get_hadoop_version()
     principal.set_installed(version)
     principal.set_yarn_ready(
         resourcemanager.resourcemanagers(), resourcemanager.port(),
         resourcemanager.hs_http(), resourcemanager.hs_ipc())
-    set_state('apache-bigtop-plugin.yarn.ready')
 
 
-@when('apache-bigtop-plugin.yarn.ready')
-@when('hadoop-plugin.joined')
 @when_not('resourcemanager.ready')
-def clear_yarn_ready(principal):
-    principal.clear_yarn_ready()
-    remove_state('apache-bigtop-plugin.yarn.ready')
-    remove_state('apache-bigtop-plugin.yarn.installed')
-
-
-@when_any('apache-bigtop-plugin.hdfs.installed', 'apache-bigtop-plugin.yarn.installed')
 @when('hadoop-plugin.joined')
-@when_none('namenode.spec.mismatch', 'resourcemanager.spec.mismatch')
-def update_status(principal):
+def clear_plugin_yarn_ready(principal):
+    principal.clear_yarn_ready()
+
+
+@when('resourcemanager.ready')
+@when('hadoop-rest.joined')
+def send_rest_yarn_info(principal, resourcemanager):
+    """Send YARN data when the resourcemanager becomes ready."""
+    principal.set_yarn_ready(
+        resourcemanager.resourcemanagers(), resourcemanager.port(),
+        resourcemanager.hs_http(), resourcemanager.hs_ipc())
+
+
+@when_not('resourcemanager.ready')
+@when('hadoop-rest.joined')
+def clear_rest_yarn_ready(principal):
+    principal.clear_yarn_ready()
+
+
+@when_any('hadoop-rest.joined',
+          'apache-bigtop-plugin.hdfs.installed',
+          'apache-bigtop-plugin.yarn.installed')
+@when_none('namenode.spec.mismatch',
+           'resourcemanager.spec.mismatch')
+def update_status():
     hdfs_rel = is_state('namenode.joined')
     yarn_rel = is_state('resourcemanager.joined')
     hdfs_ready = is_state('namenode.ready')
