@@ -1,0 +1,27 @@
+repo: git@github.com:juju-solutions/bigtop.git
+includes: 
+  - 'layer:hadoop-client'
+  - 'layer:apache-bigtop-base'
+options:
+  hadoop-client:
+    groups:
+        - 'hadoop'
+    users:
+        sqoop:
+            groups: ['hadoop']
+    dirs:
+        sqoop:
+            path: '/usr/lib/sqoop'
+            owner: 'sqoop'
+            group: 'hadoop'
+    ports:
+      sqoop_http: 
+        port: 12000
+        exposed_on: sqoop
+      sqoop_admin:
+        port: 12001
+        exposed_on: sqoop
+    silent: True
+  apache-bigtop-base:
+    bigtop_smoketest_components:
+      - sqoop

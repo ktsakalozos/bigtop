@@ -1,0 +1,7 @@
+name: sqoop2
+summary: Transfer bulk data between Apache Hadoop and structured datastores.
+maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
+description: |
+    Apache Sqoop is a tool designed for efficiently transferring bulk data
+    between Apache Hadoop and structured datastores such as relational databases
+tags: ["bigdata", "hadoop", "apache"]
