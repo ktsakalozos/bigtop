@@ -47,3 +47,5 @@ options:
   apache-bigtop-base:
     packages:
       - default-jre-headless
+    bigtop_smoketest_components:
+      - oozie
