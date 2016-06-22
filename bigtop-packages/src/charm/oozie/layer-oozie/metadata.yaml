@@ -1,4 +1,4 @@
-name: apache-bigtop-oozie
+name: oozie
 summary: Oozie stuff
 maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
 description: |

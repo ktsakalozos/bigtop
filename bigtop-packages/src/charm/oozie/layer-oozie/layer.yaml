@@ -1,4 +1,4 @@
-repo: git@github.com:juju-solutions/layer-apache-bigtop-oozie.git
+repo: git@github.com:juju-solutions/bigtop.git
 includes: 
   - 'layer:hadoop-client'
   - 'layer:apache-bigtop-base'
