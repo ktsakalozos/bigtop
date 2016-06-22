@@ -1,0 +1,15 @@
+name: apache-bigtop-oozie
+summary: Oozie stuff
+maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
+description: |
+  Apache Oozie is ...
+tags: ["bigdata", "hadoop", "apache"]
+provides:
+  client:
+    interface: oozie
+requires:
+  db:
+    interface: mysql
+#  hadoop:
+#    interface: hadoop-plugin
+#    scope: container

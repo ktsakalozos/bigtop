@@ -1,0 +1,68 @@
+#!/usr/bin/python3
+
+import amulet
+
+
+class TestDeployment(object):
+
+    def __init__(self):
+        self.deploy = amulet.Deployment(series='trusty')
+
+        self.deploy.add('hive-server', 'cs:~asanjar/trusty/hive2')
+        self.deploy.add('hive-metastore', 'cs:~asanjar/trusty/hive2')
+        self.deploy.add('mysql', 'cs:trusty/mysql')
+
+        self.deploy.configure('mysql', {'binlog-format': 'row'})
+
+        self.deploy.relate('hive-server:db', 'mysql:db')
+        self.deploy.relate('hive-metastore:db', 'mysql:db')
+
+        self.deploy.expose('hive-server')
+
+        try:
+            self.deploy.setup(900)
+            self.deploy.sentry.wait(900)
+        except amulet.helpers.TimeoutError:
+            amulet.raise_status(amulet.FAIL,
+                                msg="Environment wasn't stood up in time")
+
+        self.hive_unit = self.deploy.sentry.unit['hive-server/0']
+        self.meta_unit = self.deploy.sentry.unit['hive-metastore/0']
+
+    # Clever test runner. TY cory
+    def run(self):
+        for test in dir(self):
+            if test.startswith('test_'):
+                getattr(self, test)()
+
+
+    # Validate the service is running
+    def test_service_status(self):
+        output, code = self.hive_unit.run('service hive-server2 status')
+        if output != "* Hive Server2 is running":
+            amulet.raise_status(amulet.FAIL, "Hive2 Server not running")
+
+    # Validate the JVM
+    def test_jvm_status(self):
+        output, code = self.hive_unit.run('jps')
+        if not "Jps" in output or not "RunJar" in output:
+            amulet.raise_status(amulet.FAIL, "JVM not present")
+
+    def test_mysql_meta_tables(self):
+        unit = self.deploy.sentry.unit['mysql/0']
+
+        tables = ['DATABASE_PARAMS', 'DBS', 'SEQUENCE_TABLE']
+
+        # Determine SQL Password and define the login routine
+        sql_pass, code = unit.run('cat /var/lib/mysql/mysql.passwd')
+        sql_login = 'mysql -u root -p{}'.format(sql_pass)
+        cmd = '{} relation-sentry -e "SHOW TABLES"'.format(sql_login)
+        output, code = unit.run(cmd)
+        for t in tables:
+            if not t in output:
+                msg = "Unable to locate table {}".format(t)
+                amulet.raise_status(amulet.FAIL, msg=msg)
+
+if __name__ == '__main__':
+    runner = TestDeployment()
+    runner.run()
