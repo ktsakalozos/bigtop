@@ -1,0 +1,9 @@
+name: alluxio
+summary: Apache Alluxio from Apache Bigtop
+maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
+description: >
+  Alluxio, formerly known as Tachyon, 
+  is a memory speed virtual distributed storage system.
+
+  This charm provides a Apache Alluxio via the Apache Bigtop.
+tags: ["applications", "bigdata", "hadoop", "apache"]

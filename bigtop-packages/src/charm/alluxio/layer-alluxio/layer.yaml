@@ -1,0 +1,14 @@
+includes:
+  - 'layer:apache-bigtop-base'
+  - 'layer:leadership'
+options:
+  apache-bigtop-base:
+    bigtop_smoketest_components:
+      - alluxio
+    ports:
+      alluxio:
+        port: 19999
+        exposed_on: 'alluxio'
+    bigtop_version: 'bigtop-master'
+    bigtop_repo-x86_64: 'https://ci.bigtop.apache.org/job/Bigtop-trunk/BUILD_ENVIRONMENTS%3Dubuntu-14.04,label%3Ddocker-slave/lastSuccessfulBuild/artifact/output/apt/'
+    bigtop_release_url: 'https://github.com/apache/bigtop/archive/master.zip'
