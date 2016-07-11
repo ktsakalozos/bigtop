@@ -27,11 +27,11 @@ class TestDeploy(unittest.TestCase):
     def setUp(self):
         self.d = amulet.Deployment(series='trusty')
         self.d.add('sqoop2', 'sqoop2')
-        self.d.setup(timeout=900)
+        self.d.setup(timeout=1800)
         self.d.sentry.wait(timeout=1800)
 
     def test_deploy(self):
-        self.d.sentry.wait_for_messages({"sqoop2": "Waiting on relation to Java"})
+        self.d.sentry.wait_for_messages({"sqoop2": "waiting on relation to java"})
 
 
 if __name__ == '__main__':
