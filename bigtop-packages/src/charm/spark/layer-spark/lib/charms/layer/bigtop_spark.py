@@ -111,8 +111,9 @@ class Spark(object):
 
         self.install_benchmark()
 
+        master_ip = utils.resolve_private_address(available_hosts['spark-master'])
         hosts = {
-            'spark': available_hosts['spark-master'],
+            'spark': master_ip,
         }
 
         dc = self.dist_config
@@ -127,7 +128,7 @@ class Spark(object):
         roles = self.get_roles()
 
         override = {
-            'spark::common::master_url': self.get_master_url(available_hosts['spark-master']),
+            'spark::common::master_url': master_ip,
             'spark::common::event_log_dir': events_log_dir,
             'spark::common::history_log_dir': events_log_dir,
         }

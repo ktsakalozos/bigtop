@@ -46,6 +46,9 @@ def report_status():
 
 def install_spark(hadoop=None):
     spark_master_host = leadership.leader_get('master-fqdn')
+    if not spark_master_host:
+        return
+
     hosts = {
         'spark-master': spark_master_host,
     }
