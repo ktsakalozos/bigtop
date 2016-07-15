@@ -5,6 +5,8 @@ includes:
   - 'layer:leadership'
   - 'interface:benchmark'
   - 'interface:spark'
+  - 'interface:zookeeper'
+  - 'interface:spark-quorum'
 options:
   hadoop-client:
     groups:

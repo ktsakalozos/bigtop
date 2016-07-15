@@ -30,18 +30,27 @@ class Spark(object):
     # translate our execution_mode into the appropriate --master value
     def get_master_url(self, spark_master_host):
         mode = hookenv.config()['spark_execution_mode']
+        zk_units = unitdata.kv().get('zookeeper.units', [])
         master = None
         if mode.startswith('local') or mode == 'yarn-cluster':
             master = mode
-        elif mode == 'standalone':
+        elif mode == 'standalone' and not zk_units:
             master = 'spark://{}:7077'.format(spark_master_host)
+        elif mode == 'standalone' and zk_units:
+            master_ips = [p[1] for p in unitdata.kv().get('sparkpeer.units')]
+            nodes = []
+            for ip in master_ips:
+                nodes.append('{}:7077'.format(ip))
+            nodes_str = ','.join(nodes)
+            master = 'spark://{}'.format(nodes_str)
         elif mode.startswith('yarn'):
             master = 'yarn-client'
         return master
 
     def get_roles(self):
         roles = ['spark-worker', 'spark-client']
-        if is_state('leadership.is_leader'):
+        zk_units = unitdata.kv().get('zookeeper.units', [])
+        if is_state('leadership.is_leader') or zk_units:
             roles.append('spark-master')
             roles.append('spark-history-server')
         return roles
@@ -91,7 +100,7 @@ class Spark(object):
                      events_dir)
         return events_dir
 
-    def configure(self, available_hosts):
+    def configure(self, available_hosts, zk_units, peers):
         """
         This is the core logic of setting up spark.
 
@@ -104,6 +113,9 @@ class Spark(object):
 
         :param dict available_hosts: Hosts that Spark should know about.
         """
+        unitdata.kv().set('zookeeper.units', zk_units)
+        unitdata.kv().set('sparkpeer.units', peers)
+        unitdata.kv().flush(True)
 
         if not unitdata.kv().get('spark.bootstrapped', False):
             self.setup()
@@ -132,6 +144,17 @@ class Spark(object):
             'spark::common::event_log_dir': events_log_dir,
             'spark::common::history_log_dir': events_log_dir,
         }
+
+        if zk_units:
+            zks = []
+            for unit in zk_units:
+                ip = utils.resolve_private_address(unit['host'])
+                zks.append("%s:%s" % (ip, unit['port']))
+
+            zk_connect = ",".join(zks)
+            override['spark::common::zookeeper_connection_string'] = zk_connect
+        else:
+            override['spark::common::zookeeper_connection_string'] = ""
 
         bigtop = Bigtop()
         bigtop.render_site_yaml(hosts, roles, override)

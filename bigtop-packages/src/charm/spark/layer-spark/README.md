@@ -14,7 +14,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-## Overview
+## Spark Overview
 
 ### Spark Cluster
 
@@ -43,7 +43,7 @@ processing. Key features:
 
 ## Deployment
 
-This charm allows the deployment of Apache Spark backaged by Bigtop
+This charm allows the deployment of Apache Spark packaged by Apache Bigtop
 in the modes described below:
 
  * **Standalone**
@@ -51,7 +51,7 @@ in the modes described below:
  In this mode Spark units form a cluster that you can scale to match your needs.
  Starting with a single node:
 
-    juju deploy apache-bigtop-spark spark
+    juju deploy spark
     juju deploy openjdk
     juju add-relation spark openjdk
 
@@ -60,23 +60,38 @@ in the modes described below:
     juju add-unit spark
 
  When in standalone mode Juju ensures a single Spark master is appointed.
- The status of the unit acting as master reads "Ready (standalone - master)",
- while the rest of the units display a status of  "Ready (standalone)".
+ The status of the unit acting as master reads "ready (standalone - master)",
+ while the rest of the units display a status of  "ready (standalone)".
  In case you remove the master unit Juju will appoint a new master to the cluster.
- However, should a master fail in this standalone mode the cluster will stop functioning
- properly.
+ However, should a master fail in this standalone mode running jobs and job history
+ will be lost.
+
+ * **Standalone HA**
+
+ To enable High Availability properties of a cluster you need to add a relation
+ between spark and a zookeeper deployment. For instance:
+
+    juju deploy apache-zookeeper zookeeper
+    juju add-relation spark zookeeper
+
+ In this mode again you can scale your cluster to match your needs by adding/removing
+ units. Spark units report "ready (standalone HA)" in their status so if you need to
+ identify the node acting as master you need to query the Zookeeper deployment.
+
+    juju ssh zk/0
+    zkCli.sh
+    get /spark/master_status
 
  * **Yarn-client and Yarn-cluster**
 
  This charm leverages our pluggable Hadoop model with the `hadoop-plugin`
  interface. This means that you can relate this charm to a base Apache Hadoop cluster
  to run Spark jobs there. The suggested deployment method is to use the
- [apache-hadoop-spark](https://jujucharms.com/apache-hadoop-spark/)
- bundle. This will deploy the Apache Hadoop platform with a single Apache Spark
- unit that communicates with the cluster by relating to the
- `apache-hadoop-plugin` subordinate charm:
+ [hadoop-processing](https://jujucharms.com/hadoop-processing/)
+ bundle and add a relation between spark and the plugin:
 
-    juju-quickstart bigtop-processing-spark
+    juju deploy hadoop-processing
+    juju add-relation plugin spark
 
 
 Note: To transition among execution modes you need to set the
@@ -130,57 +145,7 @@ Once the relation has been made, access the web interface at
 `http://{spark_unit_ip_address}:8880`
 
 
-## Upgrading Spark Charm
-
-To upgrade the charm is a multi step process.
-First you will need to upgrade the charm by issuing:
-
-    juju upgrade-charm spark
-
-This will fetch any available upgrades. You can query for the available versions via:
-
-    juju action do spark/0 list-spark-versions
-
-Next you need to enter the maintenance modes
-where spark is sitting idle for the upgrade to start:
-
-    juju set spark maintenance_mode=true
-
-Set the target spark version (any new units added will be using that spark version):
-
-    juju set spark spark_version=<new_version>
-
-The upgrade process will start immediately. If you would like to trigger the upgrade process
-manually per spark unit you should make sure you have set the `upgrade_immediately`
-flag to false.
-
-    juju set spark upgrade_immediately=false
-
-And then you can call the action:
-
-    juju action do spark/0 upgrade-spark
-
-Finally at the end of the upgrade you should exit the maintenance mode:
-
-    juju set spark maintenance_mode=false
-
-
 ## Configuration
-
-### `driver_memory`
-
-Amount of memory Spark will request for the Master. Specify gigabytes (e.g.
-1g) or megabytes (e.g. 1024m). If running in `local` or `standalone` mode, you
-may also specify a percentage of total system memory (e.g. 50%).
-
-### `executor_memory`
-
-Amount of memory Spark will request for each executor. Specify gigabytes (e.g.
-1g) or megabytes (e.g. 1024m). If running in `local` or `standalone` mode, you
-may also specify a percentage of total system memory (e.g. 50%). Take care
-when specifying percentages in local modes, as this value is for *each*
-executor. Your Spark job will fail if, for example, you set this value > 50%
-and attempt to run 2 or more executors.
 
 ### `spark_bench_enabled`
 
@@ -249,17 +214,27 @@ Once they all indicate that they are ready, you can perform a "smoke test"
 to verify that Spark is working as expected using the built-in `smoke-test`
 action:
 
-    juju action do spark/0 smoke-test
+    juju run-action spark/0 smoke-test
 
-After a few seconds or so, you can check the results of the smoke test:
+_**Note**: The above assumes Juju 2.0 or greater. If using an earlier version
+of Juju, the syntax is `juju action do spark/0 smoke-test`._
 
-    juju action status
+
+After a minute or so, you can check the results of the smoke test:
+
+    juju show-action-status
+
+_**Note**: The above assumes Juju 2.0 or greater. If using an earlier version
+of Juju, the syntax is `juju action status`._
 
 You will see `status: completed` if the smoke test was successful, or
 `status: failed` if it was not.  You can get more information on why it failed
 via:
 
-    juju action fetch <action-id>
+    juju show-action-output <action-id>
+
+_**Note**: The above assumes Juju 2.0 or greater. If using an earlier version
+of Juju, the syntax is `juju action fetch <action-id>`._
 
 
 ### Verify Job History

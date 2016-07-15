@@ -38,13 +38,15 @@ def report_status():
                            'yarn execution mode not available')
         return
 
-    if mode == 'standalone' and is_state('leadership.is_leader'):
+    if mode == 'standalone' and is_state('zookeeper.ready'):
+        mode = mode + " - HA"
+    elif mode == 'standalone' and is_state('leadership.is_leader'):
         mode = mode + " - master"
 
     hookenv.status_set('active', 'ready ({})'.format(mode))
 
 
-def install_spark(hadoop=None):
+def install_spark(hadoop=None, zks=None):
     spark_master_host = leadership.leader_get('master-fqdn')
     if not spark_master_host:
         return
@@ -63,7 +65,7 @@ def install_spark(hadoop=None):
 
     dist = get_dist_config()
     spark = Spark(dist)
-    spark.configure(hosts)
+    spark.configure(hosts, zks, get_spark_peers())
 
 
 @when('bigtop.available')
@@ -85,7 +87,11 @@ def reconfigure_spark():
     hadoop = (RelationBase.from_state('hadoop.yarn.ready') or
               RelationBase.from_state('hadoop.hdfs.ready'))
 
-    install_spark(hadoop)
+    if is_state('zookeeper.ready'):
+        zk = RelationBase.from_state('zookeeper.ready')
+        zks = zk.zookeepers()
+
+    install_spark(hadoop, zks)
     report_status()
 
 
@@ -95,14 +101,28 @@ def reconfigure_spark():
 # we fire this method always ('spark.started'). We then build a deployment-matrix
 # and if anything has changed we re-install.
 # 'hadoop.yarn.ready', 'hadoop.hdfs.ready' can be ommited but I like them here for clarity
-@when_any('leadership.changed.master-fqdn', 'hadoop.yarn.ready', 'hadoop.hdfs.ready', 'spark.started')
+@when_any('leadership.changed.master-fqdn', 'hadoop.yarn.ready',
+          'hadoop.hdfs.ready', 'spark.started', 'zookeeper.ready')
 @when('bigtop.available')
 def reinstall_spark():
     spark_master_host = leadership.leader_get('master-fqdn')
+    peers = []
+    zks = []
+    if is_state('zookeeper.ready'):
+        # if ZK is availuable we are in HA. We do not want reconfigurations if a leader fails
+        # HA takes care of this
+        spark_master_host = ''
+        zk = RelationBase.from_state('zookeeper.ready')
+        zks = zk.zookeepers()
+        # We need reconfigure Spark when in HA and peers change ignore otherwise
+        peers = get_spark_peers()
+
     deployment_matrix = {
         'spark_master': spark_master_host,
         'yarn_ready': is_state('hadoop.yarn.ready'),
         'hdfs_ready': is_state('hadoop.hdfs.ready'),
+        'zookeepers': zks,
+        'peers': peers,
     }
 
     if not data_changed('deployment_matrix', deployment_matrix):
@@ -111,13 +131,21 @@ def reinstall_spark():
     hookenv.status_set('maintenance', 'configuring spark')
     hadoop = (RelationBase.from_state('hadoop.yarn.ready') or
               RelationBase.from_state('hadoop.hdfs.ready'))
-    install_spark(hadoop)
+    install_spark(hadoop, zks)
     if is_state('hadoop.yarn.ready'):
         set_deployment_mode_state('spark.yarn.installed')
     else:
         set_deployment_mode_state('spark.standalone.installed')
 
     report_status()
+
+
+def get_spark_peers():
+    nodes = [(hookenv.local_unit(), hookenv.unit_private_ip())]
+    sparkpeer = RelationBase.from_state('sparkpeers.joined')
+    if sparkpeer:
+        nodes.extend(sorted(sparkpeer.get_nodes()))
+    return nodes
 
 
 @when('leadership.is_leader', 'bigtop.available')
