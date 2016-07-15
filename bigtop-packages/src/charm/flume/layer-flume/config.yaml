@@ -1,0 +1,7 @@
+options:
+    flume_config:
+        type: string
+        default: ''
+        description: |
+            Apache Flume configuration. Set this value to 'auto' so that the configuration
+            is infered by the relations.

@@ -1,0 +1,10 @@
+includes:
+  - 'layer:apache-bigtop-base'
+options:
+  apache-bigtop-base:
+    groups:
+      - flume
+      - hadoop
+    users:
+      flume:
+        groups: ['flume', 'hadoop']
