@@ -131,8 +131,7 @@ def client_present(client):
         client.set_spark_started()
         dist = get_dist_config()
         spark = Spark(dist)
-        master_host = get_fqdn()
-        master_ip = utils.resolve_private_address(master_host)
+        master_ip = utils.resolve_private_address(hookenv.unit_private_ip())
         master_url = spark.get_master_url(master_ip)
         client.send_master_info(master_url, master_ip)
 
