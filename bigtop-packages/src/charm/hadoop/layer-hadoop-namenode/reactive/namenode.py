@@ -14,11 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from charms.reactive import is_state, remove_state, set_state, when, when_not
+import os
+import json
+from charms.reactive import is_state, remove_state, set_state, is_state, when, when_not
 from charms.layer.apache_bigtop_base import Bigtop, get_layer_opts, get_fqdn
-from charmhelpers.core import hookenv, host
+from charmhelpers.core import hookenv, host, unitdata
 from jujubigdata import utils
 from path import Path
+from charms import leadership
 
 
 ###############################################################################
@@ -42,22 +45,96 @@ def send_early_install_info(remote):
     remote.send_ports(hdfs_port, webhdfs_port)
 
 
+def get_cluster_nodes():
+    return json.loads(leadership.leader_get('cluster-nodes') or '[]')
+
+
+def set_cluster_nodes(nodes):
+    leadership.leader_set({
+        'cluster-nodes': json.dumps(nodes),
+    })
+
+
 ###############################################################################
 # Core methods
 ###############################################################################
 @when('bigtop.available')
-@when_not('apache-bigtop-namenode.installed')
-def install_namenode():
-    hookenv.status_set('maintenance', 'installing namenode')
+@when_not('journal.started')
+def init_ha_journalnode():
+    ha_mode = hookenv.config()['ha']
+    if not ha_mode:
+        return
+
+    hookenv.status_set('maintenance', 'installing journal node')
     bigtop = Bigtop()
+
+    roles=[
+        'journalnode',
+    ]
+
     bigtop.render_site_yaml(
         hosts={
             'namenode': get_fqdn(),
         },
-        roles=[
-            'namenode',
-            'mapred-app',
-        ],
+        roles=roles,
+    )
+    bigtop.trigger_puppet()
+
+    hookenv.status_set('maintenance', 'journal node installed')
+    set_state('journal.started')
+
+
+@when('bigtop.available')
+@when('journal.started')
+@when('ssh_pub.ready', 'ssh_pri.ready')
+@when_not('apache-bigtop-namenode.installed')
+def install_namenode():
+    ha_mode = hookenv.config()['ha']
+    if ha_mode:
+        selected_nodes = get_cluster_nodes()
+        if len(selected_nodes) < 3:
+            remain = 3 - len(selected_nodes)
+            hookenv.status_set('blocked', 'waiting for {} more namenode units'.format(remain))
+            return
+        else:
+            primary = selected_nodes[0]
+            secondary = selected_nodes[1]
+            third = selected_nodes[2]
+    else:
+        primary = get_fqdn()
+
+    hookenv.status_set('maintenance', 'installing namenode')
+    bigtop = Bigtop()
+
+    roles=[
+        'namenode',
+	'mapred-app',
+    ]
+
+    extra = {}
+
+    if ha_mode:
+        if is_state('leadership.is_leader'):
+            utils.run_as('root', 'hdfs', 'namenode', '-format')
+        roles.append("standby-namenode")
+        extra["bigtop::standby_head_node"] = secondary
+        extra["hadoop::common_hdfs::ha"] = "manual"
+        extra["hadoop::common_hdfs::hadoop_ha_sshfence_user_home"] = "/var/lib/hadoop-hdfs"
+        extra["hadoop::common_hdfs::sshfence_privkey"] = "/home/hdfs/.ssh/id_rsa"
+        extra["hadoop::common_hdfs::sshfence_pubkey"] = "/home/hdfs/.ssh/id_rsa.pub"
+        extra["hadoop::common_hdfs::sshfence_user"] = "hdfs"
+        extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
+        extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
+        extra["hadoop::common_hdfs::hadoop_namenode_host"] = [primary, secondary, third]
+        share_edits = "qjournal://{}:8485;{}:8485;{}:8485/ha-nn-uri".format(primary, secondary, third)
+        extra["hadoop::common_hdfs::shared_edits_dir"] = share_edits
+
+    bigtop.render_site_yaml(
+        hosts={
+            'namenode': primary,
+        },
+        roles=roles,
+        overrides=extra,
     )
     bigtop.trigger_puppet()
 
@@ -75,12 +152,6 @@ def install_namenode():
         props['dfs.namenode.http-bind-host'] = '0.0.0.0'
         props['dfs.namenode.https-bind-host'] = '0.0.0.0'
 
-    # We need to create the 'mapred' user/group since we are not installing
-    # hadoop-mapreduce. This is needed so the namenode can access yarn
-    # job history files in hdfs. Also add our ubuntu user to the hadoop
-    # and mapred groups.
-    get_layer_opts().add_users()
-
     set_state('apache-bigtop-namenode.installed')
     hookenv.status_set('maintenance', 'namenode installed')
 
@@ -97,6 +168,59 @@ def start_namenode():
         hookenv.open_port(port)
     set_state('apache-bigtop-namenode.started')
     hookenv.status_set('maintenance', 'namenode started')
+
+
+@when('namenode-cluster.joined')
+@when('leadership.is_leader')
+def check_cluster_nodes(cluster):
+    nodes = cluster.nodes()
+    # The first node that joins the leader in the cluster is going to be
+    # the secondary namenode.
+    # The primary namenode is going to be leader.
+    # The above selection should change only when the secondary node departs
+    # or the leader changes.
+    if not unitdata.kv().get('ha.config.ready', False) and len(nodes) >= 2:
+        unitdata.kv().set('ha.config.ready', True)
+        units_map = cluster.hosts_map()
+        set_cluster_nodes(list(units_map.keys()))
+
+
+@when('bigtop.available')
+@when('leadership.is_leader')
+@when_not('leadership.set.ssh-key-pub')
+def generate_ssh_key():
+    # We need to create the 'mapred' user/group since we are not installing
+    # hadoop-mapreduce. This is needed so the namenode can access yarn
+    # job history files in hdfs. Also add our ubuntu user to the hadoop
+    # and mapred groups.
+    get_layer_opts().add_users()
+
+    utils.generate_ssh_key('hdfs')
+    leadership.leader_set({
+        'ssh-key-priv': utils.ssh_priv_key('hdfs').text(),
+        'ssh-key-pub': utils.ssh_pub_key('hdfs').text(),
+    })
+
+
+@when('leadership.changed.ssh-key-pub')
+def install_ssh_pub_key():
+    ssh_dir = Path("/var/lib/hadoop-hdfs/.ssh/")
+    ssh_dir.makedirs_p()
+    authfile = ssh_dir / 'authorized_keys'
+    authfile.write_lines([leadership.leader_get('ssh-key-pub')], append=True)
+    keyfile = ssh_dir / 'id_rsa.pub'
+    keyfile.write_text(leadership.leader_get('ssh-key-pub'))
+    set_state('ssh_pub.ready')
+
+
+@when('leadership.changed.ssh-key-priv')
+def install_ssh_priv_key():
+    ssh_dir = Path("/var/lib/hadoop-hdfs/.ssh/")
+    ssh_dir.makedirs_p()
+    keyfile = ssh_dir / 'id_rsa'
+    keyfile.write_text(leadership.leader_get('ssh-key-priv'))
+    os.chmod(keyfile, 600)
+    set_state('ssh_pri.ready')
 
 
 ###############################################################################

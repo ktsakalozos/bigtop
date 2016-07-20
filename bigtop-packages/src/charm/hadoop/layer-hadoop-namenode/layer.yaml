@@ -1,15 +1,21 @@
 repo: git@github.com:juju-solutions/layer-hadoop-namenode.git
 includes:
   - 'layer:apache-bigtop-base'
+  - 'layer:leadership'
   - 'interface:dfs'
   - 'interface:dfs-slave'
   - 'interface:benchmark'
+  - 'interface:namenode-cluster'
 options:
   apache-bigtop-base:
     groups:
       - 'mapred'
       - 'yarn'
+      - 'hdfs'
+      - 'hadoop'
     users:
+      hdfs:
+        groups: ['hdfs', 'hadoop', 'mapred']
       mapred:
         groups: ['hadoop', 'mapred']
       ubuntu:
