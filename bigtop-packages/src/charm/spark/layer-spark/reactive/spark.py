@@ -19,6 +19,7 @@ from charmhelpers.core import hookenv
 from charms import leadership
 from charms.reactive.helpers import data_changed
 from charms.layer.hadoop_client import get_dist_config
+from jujubigdata import utils
 
 
 def set_deployment_mode_state(state):
@@ -157,10 +158,17 @@ def send_fqdn():
 
 @when('spark.started', 'client.joined')
 def client_present(client):
-    client.set_spark_started()
+    if is_state('leadership.is_leader'):
+        client.set_spark_started()
+        dist = get_dist_config()
+        spark = Spark(dist)
+        master_ip = utils.resolve_private_address(hookenv.unit_private_ip())
+        master_url = spark.get_master_url(master_ip)
+        client.send_master_info(master_url, master_ip)
 
 
 @when('client.joined')
 @when_not('spark.started')
 def client_should_stop(client):
-    client.clear_spark_started()
+    if is_state('leadership.is_leader'):
+        client.clear_spark_started()
