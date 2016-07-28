@@ -45,28 +45,50 @@ def send_early_install_info(remote):
     remote.send_ports(hdfs_port, webhdfs_port)
 
 
-def get_cluster_nodes():
-    return json.loads(leadership.leader_get('cluster-nodes') or '[]')
+def get_nodes(type):
+    return json.loads(leadership.leader_get(type) or '[]')
 
 
-def set_cluster_nodes(nodes):
+def set_nodes(type, nodes):
     leadership.leader_set({
-        'cluster-nodes': json.dumps(nodes),
+        type: json.dumps(nodes),
     })
 
 
 ###############################################################################
 # Core methods
 ###############################################################################
-@when('bigtop.available')
+@when('bigtop.available', 'ssh_pub.ready', 'ssh_pri.ready')
 @when_not('journal.started')
 def init_ha_journalnode():
     ha_mode = hookenv.config()['ha']
     if not ha_mode:
         return
 
+    cluster_nodes = get_nodes('cluster')
+    if len(cluster_nodes) < 3:
+        hookenv.status_set('blocked', 'waiting for 3 namenode units')
+        return
+
+    primary = cluster_nodes[0]
+    secondary = cluster_nodes[1]
+    third = cluster_nodes[2]
+
     hookenv.status_set('maintenance', 'installing journal node')
     bigtop = Bigtop()
+
+    extra = {}
+    extra["bigtop::standby_head_node"] = secondary
+    extra["hadoop::common_hdfs::ha"] = "manual"
+    extra["hadoop::common_hdfs::hadoop_ha_sshfence_user_home"] = "/var/lib/hadoop-hdfs"
+    extra["hadoop::common_hdfs::sshfence_privkey"] = "/home/hdfs/.ssh/id_rsa"
+    extra["hadoop::common_hdfs::sshfence_pubkey"] = "/home/hdfs/.ssh/id_rsa.pub"
+    extra["hadoop::common_hdfs::sshfence_user"] = "hdfs"
+    extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
+    extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
+    extra["hadoop::common_hdfs::hadoop_namenode_host"] = [primary, secondary]
+    share_edits = "qjournal://{}:8485;{}:8485;{}:8485/ha-nn-uri".format(primary, secondary, third)
+    extra["hadoop::common_hdfs::shared_edits_dir"] = share_edits
 
     roles=[
         'journalnode',
@@ -77,6 +99,7 @@ def init_ha_journalnode():
             'namenode': get_fqdn(),
         },
         roles=roles,
+        overrides=extra,
     )
     bigtop.trigger_puppet()
 
@@ -84,22 +107,23 @@ def init_ha_journalnode():
     set_state('journal.started')
 
 
-@when('bigtop.available')
-@when('journal.started')
-@when('ssh_pub.ready', 'ssh_pri.ready')
+@when('bigtop.available', 'journal.started', 'ssh_pub.ready', 'ssh_pri.ready')
 @when_not('apache-bigtop-namenode.installed')
 def install_namenode():
     ha_mode = hookenv.config()['ha']
     if ha_mode:
-        selected_nodes = get_cluster_nodes()
-        if len(selected_nodes) < 3:
-            remain = 3 - len(selected_nodes)
-            hookenv.status_set('blocked', 'waiting for {} more namenode units'.format(remain))
+        journal_nodes = get_nodes('journal')
+        if len(journal_nodes) < 3:
+            hookenv.status_set('waiting', 'waiting for 3 journal nodes to register')
             return
-        else:
-            primary = selected_nodes[0]
-            secondary = selected_nodes[1]
-            third = selected_nodes[2]
+
+        if not is_state('leadership.is_leader') and not is_state('hdfs.formated'):
+            hookenv.status_set('waiting', 'waiting for leader to format hdfs')
+            return
+
+        primary = journal_nodes[0]
+        secondary = journal_nodes[1]
+        third = journal_nodes[2]
     else:
         primary = get_fqdn()
 
@@ -114,8 +138,11 @@ def install_namenode():
     extra = {}
 
     if ha_mode:
+        host.chownr("/data", "hdfs", "hdfs", chowntopdir=True)
         if is_state('leadership.is_leader'):
-            utils.run_as('root', 'hdfs', 'namenode', '-format')
+            utils.run_as('hdfs', 'hdfs', 'namenode', '-format')
+            #utils.run_as('hdfs', 'hdfs', 'namenode', '-initializeSharedEdits',  '-force')
+
         roles.append("standby-namenode")
         extra["bigtop::standby_head_node"] = secondary
         extra["hadoop::common_hdfs::ha"] = "manual"
@@ -125,7 +152,7 @@ def install_namenode():
         extra["hadoop::common_hdfs::sshfence_user"] = "hdfs"
         extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
         extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
-        extra["hadoop::common_hdfs::hadoop_namenode_host"] = [primary, secondary, third]
+        extra["hadoop::common_hdfs::hadoop_namenode_host"] = [primary, secondary]
         share_edits = "qjournal://{}:8485;{}:8485;{}:8485/ha-nn-uri".format(primary, secondary, third)
         extra["hadoop::common_hdfs::shared_edits_dir"] = share_edits
 
@@ -152,6 +179,14 @@ def install_namenode():
         props['dfs.namenode.http-bind-host'] = '0.0.0.0'
         props['dfs.namenode.https-bind-host'] = '0.0.0.0'
 
+    if ha_mode:
+        if is_state('leadership.is_leader'):
+            leadership.leader_set({ 'hdfs_formated': True })
+        else:
+            utils.run_as('hdfs', 'hdfs', 'namenode', '-bootstrapStandby')
+            host.service_start('hadoop-hdfs-namenode')
+            utils.run_as('hdfs', 'hdfs', 'haadmin', '-transitionToActive', 'nn1')
+
     set_state('apache-bigtop-namenode.installed')
     hookenv.status_set('maintenance', 'namenode installed')
 
@@ -173,16 +208,34 @@ def start_namenode():
 @when('namenode-cluster.joined')
 @when('leadership.is_leader')
 def check_cluster_nodes(cluster):
-    nodes = cluster.nodes()
+    cluster_nodes = cluster.cluster_nodes()
+    journal_nodes = cluster.ready_nodes_with_journal()
     # The first node that joins the leader in the cluster is going to be
     # the secondary namenode.
     # The primary namenode is going to be leader.
     # The above selection should change only when the secondary node departs
     # or the leader changes.
-    if not unitdata.kv().get('ha.config.ready', False) and len(nodes) >= 2:
-        unitdata.kv().set('ha.config.ready', True)
-        units_map = cluster.hosts_map()
-        set_cluster_nodes(list(units_map.keys()))
+    if not unitdata.kv().get('ha.cluster.ready', False) and len(cluster_nodes) >= 2:
+        unitdata.kv().set('ha.cluster.ready', True)
+        units_ips = cluster.get_peer_ips()
+        units_ips.insert(0, utils.resolve_private_address(hookenv.unit_private_ip()))
+        set_nodes('cluster', units_ips)
+
+    if not unitdata.kv().get('ha.journal.ready', False) and len(journal_nodes) >= 2:
+        unitdata.kv().set('ha.journal.ready', True)
+        units_ips = cluster.get_peer_ips()
+        units_ips.insert(0, utils.resolve_private_address(hookenv.unit_private_ip()))
+        set_nodes('journal', units_ips)
+
+
+@when('leadership.changed.hdfs_formated')
+def hdfs_formated():
+    set_state('hdfs.formated')
+
+
+@when('namenode-cluster.joined', 'journal.started')
+def check_cluster_nodes(cluster):
+    cluster.journalnode_ready()
 
 
 @when('bigtop.available')
