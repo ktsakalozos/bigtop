@@ -27,6 +27,17 @@ from charms import leadership
 ###############################################################################
 # Utility methods
 ###############################################################################
+def get_namenodes():
+    if is_state("nonha.setup"):
+        fqdn = get_fqdn()
+        return [fqdn]
+    elif is_state("ha.setup") and is_state('ha.cluster.ready'):
+        cluster_nodes = get_nodes('cluster')
+        return [cluster_nodes[0], cluster_nodes[1]]
+    else:
+        return None
+
+
 def send_early_install_info(remote):
     """Send clients/slaves enough relation data to start their install.
 
@@ -37,11 +48,13 @@ def send_early_install_info(remote):
     Note that slaves can safely install early, but should not start until the
     'namenode.ready' state is set by the dfs-slave interface.
     """
-    fqdn = get_fqdn()
     hdfs_port = get_layer_opts().port('namenode')
     webhdfs_port = get_layer_opts().port('nn_webapp_http')
 
-    remote.send_namenodes([fqdn])
+    namenodes = get_namenodes()
+    if namenodes:
+        remote.send_namenodes(namenodes)
+
     remote.send_ports(hdfs_port, webhdfs_port)
 
 
@@ -354,7 +367,7 @@ def send_dn_all_info(datanode):
     webhdfs_port = get_layer_opts().port('nn_webapp_http')
 
     datanode.send_spec(bigtop.spec())
-    datanode.send_namenodes([fqdn])
+    datanode.send_namenodes(get_namenodes())
     datanode.send_ports(hdfs_port, webhdfs_port)
 
     # hosts_map, ssh_key, and clustername are required by the dfs-slave
@@ -421,12 +434,11 @@ def send_client_all_info(client):
     dfs relation data so that our 'namenode.ready' state becomes set.
     """
     bigtop = Bigtop()
-    fqdn = get_fqdn()
     hdfs_port = get_layer_opts().port('namenode')
     webhdfs_port = get_layer_opts().port('nn_webapp_http')
 
     client.send_spec(bigtop.spec())
-    client.send_namenodes([fqdn])
+    client.send_namenodes(get_namenodes())
     client.send_ports(hdfs_port, webhdfs_port)
     # namenode.ready implies we have at least 1 datanode, which means hdfs
     # is ready for use. Inform clients of that with send_ready().

@@ -36,10 +36,25 @@ def install_hadoop_client_hdfs(principal, namenode):
     """
     if namenode.namenodes():
         hookenv.status_set('maintenance', 'installing plugin (hdfs)')
-        nn_host = namenode.namenodes()[0]
+        namenodes = namenode.namenodes()
+        nn_host = namenodes[0]
+
+        extra = {}
+        # if in HA mode we need some extra configuration
+        if len(namenodes) > 1:
+            extra["hadoop::common_hdfs::ha"] = "manual"
+            extra["bigtop::standby_head_node"] = namenodes[1]
+            extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
+            extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
+            extra["hadoop::common_hdfs::hadoop_namenode_host"] = [namenodes[0], namenodes[1]]
+
         bigtop = Bigtop()
         hosts = {'namenode': nn_host}
-        bigtop.render_site_yaml(hosts=hosts, roles='hadoop-client')
+        bigtop.render_site_yaml(
+            hosts=hosts,
+            roles='hadoop-client',
+            overrides=extra,
+        )
         bigtop.trigger_puppet()
         set_state('apache-bigtop-plugin.hdfs.installed')
         hookenv.status_set('maintenance', 'plugin (hdfs) installed')
@@ -81,11 +96,22 @@ def clear_hdfs_ready(principal):
 def install_hadoop_client_yarn(principal, namenode, resourcemanager):
     if namenode.namenodes() and resourcemanager.resourcemanagers():
         hookenv.status_set('maintenance', 'installing plugin (yarn)')
-        nn_host = namenode.namenodes()[0]
+        namenodes = namenode.namenodes()
+        nn_host = namenodes[0]
+
+        extra = {}
+        # if in HA mode we need some extra configuration
+        if len(namenodes) > 1:
+            extra["hadoop::common_hdfs::ha"] = "manual"
+            extra["bigtop::standby_head_node"] = namenodes[1]
+            extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
+            extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
+            extra["hadoop::common_hdfs::hadoop_namenode_host"] = [namenodes[0], namenodes[1]]
+
         rm_host = resourcemanager.resourcemanagers()[0]
         bigtop = Bigtop()
         hosts = {'namenode': nn_host, 'resourcemanager': rm_host}
-        bigtop.render_site_yaml(hosts=hosts, roles='hadoop-client')
+        bigtop.render_site_yaml(hosts=hosts, roles='hadoop-client', overrides=extra)
         bigtop.trigger_puppet()
         set_state('apache-bigtop-plugin.yarn.installed')
         hookenv.status_set('active', 'ready (HDFS & YARN)')

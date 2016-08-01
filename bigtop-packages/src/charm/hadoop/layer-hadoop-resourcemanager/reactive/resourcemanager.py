@@ -61,11 +61,26 @@ def install_resourcemanager(namenode):
     """
     if namenode.namenodes():
         hookenv.status_set('maintenance', 'installing resourcemanager')
-        nn_host = namenode.namenodes()[0]
+        namenodes = namenode.namenodes()
+        nn_host = namenodes[0]
+
+        extra = {}
+        # if in HA mode we need some extra configuration
+        if len(namenodes) > 1:
+            extra["hadoop::common_hdfs::ha"] = "manual"
+            extra["bigtop::standby_head_node"] = namenodes[1]
+            extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
+            extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
+            extra["hadoop::common_hdfs::hadoop_namenode_host"] = [namenodes[0], namenodes[1]]
+
         rm_host = get_fqdn()
         bigtop = Bigtop()
         hosts = {'namenode': nn_host, 'resourcemanager': rm_host}
-        bigtop.render_site_yaml(hosts=hosts, roles='resourcemanager')
+        bigtop.render_site_yaml(
+            hosts=hosts,
+            roles='resourcemanager',
+            overrides=extra,
+        )
         bigtop.trigger_puppet()
 
         # /etc/hosts entries from the KV are not currently used for bigtop,
