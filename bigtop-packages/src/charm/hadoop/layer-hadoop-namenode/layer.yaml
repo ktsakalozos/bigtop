@@ -6,6 +6,7 @@ includes:
   - 'interface:dfs-slave'
   - 'interface:benchmark'
   - 'interface:namenode-cluster'
+  - 'interface:zookeeper'
 options:
   apache-bigtop-base:
     groups:

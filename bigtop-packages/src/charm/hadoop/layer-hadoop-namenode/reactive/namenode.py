@@ -22,6 +22,7 @@ from charmhelpers.core import hookenv, host, unitdata
 from jujubigdata import utils
 from path import Path
 from charms import leadership
+from charms.reactive.helpers import data_changed
 
 
 ###############################################################################
@@ -119,6 +120,9 @@ def start_namenode():
     for port in get_layer_opts().exposed_ports('namenode'):
         hookenv.open_port(port)
     set_state('apache-bigtop-namenode.started')
+
+    if is_state('leadership.is_leader'):
+        leadership.leader_set({ 'hdfs_formated': True })
     hookenv.status_set('maintenance', 'namenode started')
 
 
@@ -136,9 +140,14 @@ def hdfs_formated():
 @when('bigtop.available')
 @when_not('setup.marked')
 def mark_ha_setup():
-    ha_mode = hookenv.config()['ha']
-    if ha_mode:
+    setup_mode = hookenv.config()['ha']
+    if setup_mode:
         set_state('ha.setup')
+        autofail = hookenv.config()['autofailover']
+        if autofail:
+            set_state("auto.ha")
+        else:
+            set_state("manual.ha")
     else:
         set_state('nonha.setup')
 
@@ -245,6 +254,43 @@ def send_journal_nodes_fqdn(cluster):
 
 
 ###############################################################################
+# HA -- handle zookeeper nodes
+###############################################################################
+@when('zookeeper.joined', 'leadership.is_leader', 'ha.setup', 'auto.ha')
+def gather_zookeeper_nodes(zkcluster):
+    zks = zkcluster.zookeepers()
+    if not data_changed('zknodes', zks) or not zks:
+        return
+
+    set_nodes('zookeeper', zks)
+
+
+@when('leadership.changed.zookeeper')
+def zookeeper_nodes_udated():
+    set_state('zookeepers.ready')
+
+    # If hadoop-hdfs-zkfc we need to update core-site.xml with the quorum
+    # and restart the service.
+    if host.service_running('hadoop-hdfs-zkfc'):
+        host.service_stop('hadoop-hdfs-zkfc')
+        core_site = Path('/etc/hadoop/conf/core-site.xml')
+        with utils.xmlpropmap_edit_in_place(core_site) as props:
+            props['ha.zookeeper.quorum'] = get_zookeeper_quorum_string()
+        host.service_start('hadoop-hdfs-zkfc')
+
+
+def get_zookeeper_quorum_string():
+    zk_units = get_nodes('zookeeper')
+    zks = []
+    for unit in zk_units:
+        ip = utils.resolve_private_address(unit['host'])
+        zks.append("%s:%s" % (ip, unit['port']))
+        zks.sort()
+    zk_connect = ",".join(zks)
+    return zk_connect
+
+
+###############################################################################
 # HA -- Start services
 ###############################################################################
 def get_bigtop_overrides(nodes):
@@ -297,16 +343,29 @@ def start_ha_journalnode():
 
 
 @when('bigtop.available', 'ha.setup', 'ssh_pub.ready', 'ssh_pri.ready')
-@when_any('ha.journal.ready', 'hdfs.formated')
+@when_any('ha.journal.ready', 'hdfs.formated', 'zookeepers.ready')
 @when_not('apache-bigtop-namenode.installed')
 def install_ha_namenode():
+    if is_state('auto.ha') and not is_state('zookeepers.ready'):
+        hookenv.status_set('blocked', 'waiting for relation to zookeeper')
+        return
+
     if not is_state('leadership.is_leader') and not is_state('hdfs.formated'):
         hookenv.status_set('waiting', 'waiting for leader to format hdfs')
+        return
+
+    if not is_state('ha.journal.ready'):
+        hookenv.status_set('waiting', 'waiting for journal nodes to become ready')
         return
 
     hookenv.status_set('maintenance', 'installing ha namenode')
     journal_nodes = get_nodes('journal')
     extra = get_bigtop_overrides(journal_nodes)
+    if is_state('auto.ha'):
+        extra["hadoop::common_hdfs::ha"] = "auto"
+        extra["hadoop::zk"] = get_zookeeper_quorum_string()
+
+    extra["bigtop::roles"] = [ 'namenode', 'mapred-app', 'standby-namenode' ]
     bigtop = Bigtop()
 
     roles=[
@@ -330,19 +389,20 @@ def install_ha_namenode():
 
     additional_hosts_and_hdfs_config()
 
-    if is_state('leadership.is_leader'):
-        leadership.leader_set({ 'hdfs_formated': True })
-    elif get_fqdn() != journal_nodes[2]:
+    if get_fqdn() != journal_nodes[2] and not is_state('auto.ha'):
         utils.run_as('hdfs', 'hdfs', 'namenode', '-bootstrapStandby')
         host.service_start('hadoop-hdfs-namenode')
         utils.run_as('hdfs', 'hdfs', 'haadmin', '-transitionToActive', 'nn1')
-    else:
+    elif get_fqdn() == journal_nodes[2]:
         set_state("journalnode.only")
         host.service_stop('hadoop-hdfs-namenode')
+        if is_state('auto.ha') and host.service_running('hadoop-hdfs-zkfc'):
+            host.service_stop('hadoop-hdfs-zkfc')
         set_state('apache-bigtop-namenode.started')
 
     set_state('apache-bigtop-namenode.installed')
     hookenv.status_set('maintenance', 'namenode installed')
+
 
 ###############################################################################
 # Slave methods

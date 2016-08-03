@@ -3,3 +3,7 @@ options:
     default: false
     type: boolean
     description: Set to true if this is an HA deployment.
+  autofailover:
+    default: true
+    type: boolean
+    description: Set to true if in this HA deployment we want automatic failover.
