@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env python3
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
 # this work for additional information regarding copyright ownership.
@@ -13,35 +13,96 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-set -ex
 
-if ! charms.reactive is_state 'spark.started'; then
-    action-fail 'Spark not yet ready'
-    exit
-fi
+import sys
+sys.path.append('lib')
 
-NUM_PARTITIONS=`action-get partitions`
+from path import Path
+from time import time
+import subprocess
 
-# create dir to store results
-RUN=`date +%s`
-RESULT_DIR=/opt/sparkpi-results
-RESULT_LOG=${RESULT_DIR}/${RUN}.log
-mkdir -p ${RESULT_DIR}
-chown -R ubuntu:ubuntu ${RESULT_DIR}
+from charmhelpers.contrib.benchmark import Benchmark
+from charmhelpers.core import hookenv
+from charms.layer.hadoop_client import get_dist_config
+from charms.reactive import is_state
+from jujubigdata import utils
 
-benchmark-start
-START=`date +%s`
-# NB: Vars (e.g., ${NUM_PARTITIONS}) are
-# parameterized from this outer scope
-su ubuntu << EOF
-. /etc/environment
-echo 'calculating pi'
-spark-submit --class org.apache.spark.examples.SparkPi \
-  /usr/lib/spark/lib/spark-examples-*.jar ${NUM_PARTITIONS} &> ${RESULT_LOG}
-EOF
-STOP=`date +%s`
-benchmark-finish
+from charms.layer.bigtop_spark import Spark
 
-DURATION=`expr $STOP - $START`
-benchmark-composite "${DURATION}" 'secs' 'asc'
-benchmark-raw ${RESULT_LOG}
+
+def fail(msg, output):
+    hookenv.action_set({'output': output})
+    hookenv.action_fail(msg)
+    sys.exit(1)
+
+
+def main():
+    bench = Benchmark()
+
+    if not is_state('spark.started'):
+        fail('Spark not yet ready', 'error')
+
+    num_partitions = hookenv.action_get('partitions') or ''
+
+    # create dir to store results
+    run = int(time())
+    result_dir = Path('/opt/sparkpi-results')
+    result_log = result_dir / '{}.log'.format(run)
+    if not result_dir.exists():
+        result_dir.mkdir()
+    result_dir.chown('ubuntu', 'ubuntu')
+
+    bench.start()
+    start = int(time())
+
+    master_ip = utils.resolve_private_address(hookenv.unit_private_ip())
+    master_url = Spark(get_dist_config()).get_master_url(master_ip)
+
+    hookenv.log("values: {} {} {}".format(master_url, num_partitions, result_log))
+
+    print('calculating pi')
+
+    with open(result_log, 'w') as log_file:
+        arg_list = [
+            'spark-submit',
+            '--class',
+            'org.apache.spark.examples.SparkPi',
+            '--master',
+            master_url,
+            '/usr/lib/spark/lib/spark-examples.jar'
+        ]
+        if num_partitions:
+            # This is always blank. TODO: figure out what it was
+            # supposed to do.
+            arg_list.append(num_partitions)
+
+        try:
+            subprocess.check_call(arg_list, stdout=log_file,
+                                  stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            print('smoke test command failed: ')
+            print('{}'.format(' '.join(arg_list)))
+            fail('spark-submit failed: {}'.format(e), 'error')
+
+    stop = int(time())
+    bench.finish()
+
+    duration = stop - start
+    bench.set_composite_score(duration, 'secs')
+    subprocess.check_call(['benchmark-raw', result_log])
+
+    with open(result_log) as log:
+        success = False
+        for line in log.readlines():
+            if 'Pi is roughly 3.1' in line:
+                success = True
+                break
+
+    if not success:
+        fail('spark-submit did not calculate pi', 'error')
+
+    hookenv.action_set({'output': {'status': 'completed'}})
+
+
+if __name__ == '__main__':
+    main()
