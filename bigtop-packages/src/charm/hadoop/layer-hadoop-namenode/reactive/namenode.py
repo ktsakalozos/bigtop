@@ -16,9 +16,9 @@
 
 import os
 import json
-from charms.reactive import is_state, remove_state, set_state, is_state, when, when_not, when_any
+from charms.reactive import is_state, remove_state, set_state, when, when_not, when_any
 from charms.layer.apache_bigtop_base import Bigtop, get_layer_opts, get_fqdn
-from charmhelpers.core import hookenv, host, unitdata
+from charmhelpers.core import hookenv, host
 from jujubigdata import utils
 from path import Path
 from charms import leadership
@@ -29,6 +29,11 @@ from charms.reactive.helpers import data_changed
 # Utility methods
 ###############################################################################
 def get_namenodes():
+    """Get the namenodes available.
+
+    In case HA is requested and the cluster
+    is not up yet and empty list will be returned.
+    """
     if is_state("nonha.setup"):
         fqdn = get_fqdn()
         return [fqdn]
@@ -84,9 +89,9 @@ def install_namenode():
     hookenv.status_set('maintenance', 'installing namenode')
     bigtop = Bigtop()
 
-    roles=[
+    roles = [
         'namenode',
-	'mapred-app',
+        'mapred-app',
     ]
 
     bigtop.render_site_yaml(
@@ -122,9 +127,8 @@ def start_namenode():
     set_state('apache-bigtop-namenode.started')
 
     if is_state('leadership.is_leader'):
-        leadership.leader_set({ 'hdfs_formated': True })
+        leadership.leader_set({'hdfs_formated': True})
     hookenv.status_set('maintenance', 'namenode started')
-
 
 
 @when('leadership.changed.hdfs_formated')
@@ -135,12 +139,54 @@ def hdfs_formated():
 ###############################################################################
 # HA
 ###############################################################################
+# First 'ha.setup' is set. In case 'autofailover' is also set then Zookeeper
+# is needed for the deployment.
+#
+# The Leader creates the ssh keys of hdfs user. These keyes are used for fencing
+# The leader also distributes the keys  distributes to all 3 namenode units
+# as soon as the keys are recieved 'ssh_pri.ready' and 'ssh_pub.ready' are set.
+#
+# When a namenode unit comes online it sends over its fqdn to its peers.
+# The leader waits for two more namenode units to  come online.
+# Then the leader adds its own fqdn at the begining of the list of namenodes
+# and sends the list of all namenode units to everyone.
+# When a unit recives the list of namenode units it sets the 'ha.cluster.ready'
+# and stores the list of nodes as json in the kv store.
+# Having the ha cluster ready meand that Journal nodes have to start
+# on all 3 namenodes.
+#
+# When a journal node is ready ('journal.started') its fqdn is broadcasted to
+# its peers. The leader collects the unit fqdns and as soon as all 3
+# journal nodes are present the full list of journal nodes is
+# sent back (from the leader) to all units.
+# When a unit recives the list of all journal nodes it sets 'ha.journal.ready'.
+# At this point the namenodes are ready to be installed (via install_ha_namenode).
+#
+# The leader is the namenode that installs first. The leader is also the one
+# that formats hdfs. As soon as HDFS is formated ('hdfs.formated') the other two
+# namenodes can proceced. The second namenode unit in the list of journal nodes
+# will deploy start the namenode while the third namenode will deploy
+# but it will not start.
+#
+# In case auto-fallover is requested ('auto.ha') installation of the namenode
+# has to wait for Zookeeper to be present. Adding a zookeeper node while
+# namenode is started means that we will have to stop the zk heartbeat service
+# add the new zookeeper unit in the quorum and start the heartbeat servicec
+# again.
+#
+###############################################################################
 # HA -- mark HA setup
 ###############################################################################
 @when('bigtop.available')
 @when_not('setup.marked')
 def mark_ha_setup():
-    setup_mode = hookenv.config()['ha']
+    '''
+    This should be the first method called by the reactive framework.
+    It sets 'ha.setup' or 'nonhs.setup' and in the case of 'ha.setup'
+    it also sets 'auto.ha' or 'manual.ha' based on the user configuration.
+
+    '''
+    setup_mode = hookenv.config()['hasetup']
     if setup_mode:
         set_state('ha.setup')
         autofail = hookenv.config()['autofailover']
@@ -166,6 +212,13 @@ def wait_for_ha_setup():
 @when('bigtop.available', 'leadership.is_leader', 'ha.setup')
 @when_not('leadership.set.ssh-key-pub')
 def generate_ssh_key():
+    '''
+    Generate the ssh keys of the hdfs user. This key is going to be
+    used for fencing.
+
+    This method maked sure that the system users and groups are created because
+    the hdfs user must be present.
+    '''
     # We need to create the 'mapred' user/group since we are not installing
     # hadoop-mapreduce. This is needed so the namenode can access yarn
     # job history files in hdfs. Also add our ubuntu user to the hadoop
@@ -205,6 +258,12 @@ def install_ssh_priv_key():
 ###############################################################################
 @when('namenode-cluster.joined', 'leadership.is_leader', 'ha.setup')
 def gather_cluster_nodes(cluster):
+    '''
+    Sends the cluster nodes and the journal nodes over to all namenode peers.
+    Each peer will set the 'ha.cluster.ready' and 'ha.journal.ready' states as soon the
+    cluster is setup and the journal nodes are running respectively.
+    '''
+
     cluster_nodes = cluster.cluster_nodes()
     journal_nodes = cluster.ready_nodes_with_journal()
     # The first node that joins with the leader in the cluster is going to be
@@ -258,6 +317,9 @@ def send_journal_nodes_fqdn(cluster):
 ###############################################################################
 @when('zookeeper.joined', 'leadership.is_leader', 'ha.setup', 'auto.ha')
 def gather_zookeeper_nodes(zkcluster):
+    '''
+    The leader sends over to the peers the Zookeeper units.
+    '''
     zks = zkcluster.zookeepers()
     if not data_changed('zknodes', zks) or not zks:
         return
@@ -267,6 +329,12 @@ def gather_zookeeper_nodes(zkcluster):
 
 @when('leadership.changed.zookeeper')
 def zookeeper_nodes_udated():
+    '''
+    Set the 'zookeepers.ready'.
+
+    In case the namenode heartbead service ('hadoop-hdfs-zkfc') is already up
+    we need to update the zk quorum and restart the heartbeat.
+    '''
     set_state('zookeepers.ready')
 
     # If hadoop-hdfs-zkfc we need to update core-site.xml with the quorum
@@ -294,6 +362,10 @@ def get_zookeeper_quorum_string():
 # HA -- Start services
 ###############################################################################
 def get_bigtop_overrides(nodes):
+    '''
+    Return a dictionaly with the bigtop parameters that we need to set for
+    a manual HA setup.
+    '''
     if not is_state('ha.setup'):
         return {}
     else:
@@ -305,8 +377,8 @@ def get_bigtop_overrides(nodes):
         extra["bigtop::standby_head_node"] = secondary
         extra["hadoop::common_hdfs::ha"] = "manual"
         extra["hadoop::common_hdfs::hadoop_ha_sshfence_user_home"] = "/var/lib/hadoop-hdfs"
-        extra["hadoop::common_hdfs::sshfence_privkey"] = "/home/hdfs/.ssh/id_rsa"
-        extra["hadoop::common_hdfs::sshfence_pubkey"] = "/home/hdfs/.ssh/id_rsa.pub"
+        extra["hadoop::common_hdfs::sshfence_privkey"] = "../home/hdfs/.ssh/id_rsa"
+        extra["hadoop::common_hdfs::sshfence_pubkey"] = "../home/hdfs/.ssh/id_rsa.pub"
         extra["hadoop::common_hdfs::sshfence_user"] = "hdfs"
         extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
         extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
@@ -319,13 +391,16 @@ def get_bigtop_overrides(nodes):
 @when('bigtop.available', 'ha.cluster.ready', 'ssh_pub.ready', 'ssh_pri.ready', 'ha.setup')
 @when_not('journal.started')
 def start_ha_journalnode():
+    '''
+    Deploy the journal node.
+    '''
     cluster_nodes = get_nodes('cluster')
     extra = get_bigtop_overrides(cluster_nodes)
 
     hookenv.status_set('maintenance', 'installing journal node')
     bigtop = Bigtop()
 
-    roles=[
+    roles = [
         'journalnode',
     ]
 
@@ -346,6 +421,15 @@ def start_ha_journalnode():
 @when_any('ha.journal.ready', 'hdfs.formated', 'zookeepers.ready')
 @when_not('apache-bigtop-namenode.installed')
 def install_ha_namenode():
+    '''
+    Deploy the namenode node.
+
+    Before deploying the namenode we need to make sure:
+    - Zookeeper is ready in case 'auto.ha' is set.
+    - HDFS is formated by the leader.
+    - all journal nodes are ready.
+
+    '''
     if is_state('auto.ha') and not is_state('zookeepers.ready'):
         hookenv.status_set('blocked', 'waiting for relation to zookeeper')
         return
@@ -365,12 +449,14 @@ def install_ha_namenode():
         extra["hadoop::common_hdfs::ha"] = "auto"
         extra["hadoop::zk"] = get_zookeeper_quorum_string()
 
-    extra["bigtop::roles"] = [ 'namenode', 'mapred-app', 'standby-namenode' ]
-    bigtop = Bigtop()
-
-    roles=[
+    # We do not want the journal nodes to restart while we start the namenodes.
+    # Therefore we explicetely set the roles that need to be "puppet applied".
+    # If we do not do this override the merging of site.yaml will put the
+    # journalnode in the set of roles, causing it to restart.
+    extra["bigtop::roles"] = ['namenode', 'mapred-app', 'standby-namenode']
+    roles = [
         'namenode',
-	'mapred-app',
+        'mapred-app',
         'standby-namenode',
     ]
 
@@ -378,6 +464,7 @@ def install_ha_namenode():
     if is_state('leadership.is_leader'):
         utils.run_as('hdfs', 'hdfs', 'namenode', '-format', ' -nonInteractive')
 
+    bigtop = Bigtop()
     bigtop.render_site_yaml(
         hosts={
             'namenode': journal_nodes[0],
@@ -389,7 +476,9 @@ def install_ha_namenode():
 
     additional_hosts_and_hdfs_config()
 
-    if get_fqdn() != journal_nodes[2] and not is_state('auto.ha'):
+    # Unit 2 of the namenode service should be the standby node.
+    # Then we are in 'auto.ha' mode this is handled by ZK and puppet scripts.
+    if get_fqdn() == journal_nodes[1] and not is_state('auto.ha'):
         utils.run_as('hdfs', 'hdfs', 'namenode', '-bootstrapStandby')
         host.service_start('hadoop-hdfs-namenode')
         utils.run_as('hdfs', 'hdfs', 'haadmin', '-transitionToActive', 'nn1')
@@ -422,7 +511,6 @@ def send_dn_all_info(datanode):
     dfs-slave relation data so that our 'namenode.ready' state becomes set.
     """
     bigtop = Bigtop()
-    fqdn = get_fqdn()
     hdfs_port = get_layer_opts().port('namenode')
     webhdfs_port = get_layer_opts().port('nn_webapp_http')
 

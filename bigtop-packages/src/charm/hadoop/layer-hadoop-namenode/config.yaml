@@ -1,5 +1,5 @@
 options:
-  ha:
+  hasetup:
     default: false
     type: boolean
     description: Set to true if this is an HA deployment.
