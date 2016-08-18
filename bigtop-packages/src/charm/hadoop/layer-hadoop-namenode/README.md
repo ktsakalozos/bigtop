@@ -80,6 +80,18 @@ via:
     juju action fetch <action-id>
 
 
+## Deploying the NameNode in HA mode
+
+By default this charm will deploy the Hadoop NameNode service in a single
+unit which is a single point of failure. To request an HA setup
+you have to do so by setting the `ha_setup` config variable at 
+[deployment time](https://jujucharms.com/docs/stable/charms-config).
+Also at deployment time, you can set the `auto_failover` config variable
+to `true` so that the active namenode is 
+[automaticaly selected](https://hadoop.apache.org/docs/r2.7.1/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithQJM.html#Automatic_Failover)
+with the help of a separately deployed Apache Zookeeper service.
+
+
 ## Deploying in Network-Restricted Environments
 
 Charms can be deployed in environments with limited network access. To deploy

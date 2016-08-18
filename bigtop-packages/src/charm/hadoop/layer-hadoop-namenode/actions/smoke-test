@@ -26,23 +26,23 @@ if not is_state('apache-bigtop-namenode.ready'):
 
 
 # verify the hdfs-test directory does not already exist
-output = run_as('ubuntu', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
+output = run_as('hdfs', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
 if '/tmp/hdfs-test' in output:
-    run_as('ubuntu', 'hdfs', 'dfs', '-rm', '-R', '/tmp/hdfs-test')
-    output = run_as('ubuntu', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
+    run_as('hdfs', 'hdfs', 'dfs', '-rm', '-R', '/tmp/hdfs-test')
+    output = run_as('hdfs', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
     if 'hdfs-test' in output:
         hookenv.action_fail('Unable to remove existing hdfs-test directory')
         sys.exit()
 
 # create the directory
-run_as('ubuntu', 'hdfs', 'dfs', '-mkdir', '-p', '/tmp/hdfs-test')
-run_as('ubuntu', 'hdfs', 'dfs', '-chmod', '-R', '777', '/tmp/hdfs-test')
+run_as('hdfs', 'hdfs', 'dfs', '-mkdir', '-p', '/tmp/hdfs-test')
+run_as('hdfs', 'hdfs', 'dfs', '-chmod', '-R', '777', '/tmp/hdfs-test')
 
 # verify the newly created hdfs-test subdirectory exists
-output = run_as('ubuntu', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
+output = run_as('hdfs', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
 for line in output.split('\n'):
     if '/tmp/hdfs-test' in line:
-        if 'ubuntu' not in line or 'drwxrwxrwx' not in line:
+        if 'hdfs' not in line or 'drwxrwxrwx' not in line:
             hookenv.action_fail('Permissions incorrect for hdfs-test directory')
             sys.exit()
         break
@@ -51,10 +51,10 @@ else:
     sys.exit()
 
 # remove the directory
-run_as('ubuntu', 'hdfs', 'dfs', '-rm', '-R', '/tmp/hdfs-test')
+run_as('hdfs', 'hdfs', 'dfs', '-rm', '-R', '/tmp/hdfs-test')
 
 # verify the hdfs-test subdirectory has been removed
-output = run_as('ubuntu', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
+output = run_as('hdfs', 'hdfs', 'dfs', '-ls', '/tmp', capture_output=True)
 if '/tmp/hdfs-test' in output:
     hookenv.action_fail('Unable to remove hdfs-test directory')
     sys.exit()

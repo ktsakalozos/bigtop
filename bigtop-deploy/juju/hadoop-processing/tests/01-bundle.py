@@ -20,10 +20,10 @@ import unittest
 
 import yaml
 import amulet
-
+import time
 
 class TestBundle(unittest.TestCase):
-    bundle_file = os.path.join(os.path.dirname(__file__), '..', 'bundle.yaml')
+    bundle_file = os.path.join(os.path.dirname(__file__), '..', 'bundle-local.yaml')
 
     @classmethod
     def setUpClass(cls):
@@ -35,8 +35,16 @@ class TestBundle(unittest.TestCase):
         bundle = yaml.safe_load(bun)
         cls.d.load(bundle)
         cls.d.setup(timeout=3600)
-        cls.d.sentry.wait_for_messages({'client': 'Ready'}, timeout=3600)
-        cls.hdfs = cls.d.sentry['namenode'][0]
+        cls.d.sentry.wait_for_messages({'client': 'Ready',
+                                        'namenode': [
+                                            'ready (3 datanodes)',
+                                            'ready (3 datanodes)',
+                                            'ready - journal node only'
+                                        ]}, timeout=3600)
+        for nn in cls.d.sentry['namenode']:
+            output, retcode = nn.run("service hadoop-hdfs-namenode status")
+            if "is running" in output:
+                cls.hdfs = nn
         cls.yarn = cls.d.sentry['resourcemanager'][0]
         cls.slave = cls.d.sentry['slave'][0]
         cls.client = cls.d.sentry['client'][0]
@@ -90,6 +98,28 @@ class TestBundle(unittest.TestCase):
         if result:
             error = "YARN smoke-test failed: %s" % result['log']
             amulet.raise_status(amulet.FAIL, msg=error)
+
+    def test_ha(self):
+        """Cycle through the namenodes."""
+        units_running_namenode = []
+        for nn in self.d.sentry['namenode']:
+            output, retcode = nn.run("service hadoop-hdfs-namenode status")
+            if "is running" in output:
+                units_running_namenode.append(nn)
+
+        print("Units running namenodes are {} and {}".format(units_running_namenode[0].info['unit_name'],
+                                                             units_running_namenode[1].info['unit_name']))
+        assert len(units_running_namenode) == 2
+
+        for nn in units_running_namenode:
+            nn.run("service hadoop-hdfs-namenode stop")
+            time.sleep(60)
+            output1, retcode = nn.run("su hdfs -c \"hdfs haadmin -getServiceState nn1\"")
+            output2, retcode = nn.run("su hdfs -c \"hdfs haadmin -getServiceState nn2\"")
+            if output1 != "active" and output2 != "active":
+                amulet.raise_status(amulet.FAIL, msg="No namenode available")
+            nn.run("service hadoop-hdfs-namenode start")
+            time.sleep(60)
 
 
 if __name__ == '__main__':

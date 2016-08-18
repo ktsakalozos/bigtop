@@ -1,9 +1,9 @@
 options:
-  hasetup:
+  ha_setup:
     default: false
     type: boolean
     description: Set to true if this is an HA deployment.
-  autofailover:
+  auto_failover:
     default: true
     type: boolean
     description: Set to true if in this HA deployment we want automatic failover.

@@ -186,10 +186,11 @@ def mark_ha_setup():
     it also sets 'auto.ha' or 'manual.ha' based on the user configuration.
 
     '''
-    setup_mode = hookenv.config()['hasetup']
+    setup_mode = hookenv.config()['ha_setup']
     if setup_mode:
         set_state('ha.setup')
-        autofail = hookenv.config()['autofailover']
+        autofail = hookenv.config()['auto_failover']
+        add_files_mountpoint()
         if autofail:
             set_state("auto.ha")
         else:
@@ -209,6 +210,16 @@ def wait_for_ha_setup():
 ###############################################################################
 # HA -- ssh keys setup
 ###############################################################################
+def add_files_mountpoint():
+    filesconf = Path('/etc/puppet/fileserver.conf')
+    mountpoints = ['[files]',
+                   'path /etc/puppet/namenode/files',
+                   'allow *']
+    filesconf.write_lines(mountpoints, append=True)
+    dir = Path('/etc/puppet/namenode/files')
+    dir.makedirs_p()
+
+
 @when('bigtop.available', 'leadership.is_leader', 'ha.setup')
 @when_not('leadership.set.ssh-key-pub')
 def generate_ssh_key():
@@ -219,37 +230,35 @@ def generate_ssh_key():
     This method maked sure that the system users and groups are created because
     the hdfs user must be present.
     '''
+
     # We need to create the 'mapred' user/group since we are not installing
     # hadoop-mapreduce. This is needed so the namenode can access yarn
     # job history files in hdfs. Also add our ubuntu user to the hadoop
     # and mapred groups.
     get_layer_opts().add_users()
-
-    utils.generate_ssh_key('hdfs')
+    utils.generate_ssh_key('ubuntu')
     leadership.leader_set({
-        'ssh-key-priv': utils.ssh_priv_key('hdfs').text(),
-        'ssh-key-pub': utils.ssh_pub_key('hdfs').text(),
+        'ssh-key-priv': utils.ssh_priv_key('ubuntu').text(),
+        'ssh-key-pub': utils.ssh_pub_key('ubuntu').text(),
     })
 
 
-@when('leadership.changed.ssh-key-pub')
+@when('leadership.changed.ssh-key-pub', 'ha.setup')
 def install_ssh_pub_key():
-    ssh_dir = Path("/var/lib/hadoop-hdfs/.ssh/")
-    ssh_dir.makedirs_p()
-    authfile = ssh_dir / 'authorized_keys'
+    authfile = Path('/etc/puppet/namenode/files/authorized_keys')
     authfile.write_lines([leadership.leader_get('ssh-key-pub')], append=True)
-    keyfile = ssh_dir / 'id_rsa.pub'
+    os.chmod(authfile, 0o600)
+    keyfile = Path('/etc/puppet/namenode/files/id_rsa.pub')
     keyfile.write_text(leadership.leader_get('ssh-key-pub'))
+    os.chmod(keyfile, 0o644)
     set_state('ssh_pub.ready')
 
 
-@when('leadership.changed.ssh-key-priv')
+@when('leadership.changed.ssh-key-priv', 'ha.setup')
 def install_ssh_priv_key():
-    ssh_dir = Path("/var/lib/hadoop-hdfs/.ssh/")
-    ssh_dir.makedirs_p()
-    keyfile = ssh_dir / 'id_rsa'
+    keyfile = Path('/etc/puppet/namenode/files/id_rsa')
     keyfile.write_text(leadership.leader_get('ssh-key-priv'))
-    os.chmod(keyfile, 600)
+    os.chmod(keyfile, 0o600)
     set_state('ssh_pri.ready')
 
 
@@ -377,8 +386,8 @@ def get_bigtop_overrides(nodes):
         extra["bigtop::standby_head_node"] = secondary
         extra["hadoop::common_hdfs::ha"] = "manual"
         extra["hadoop::common_hdfs::hadoop_ha_sshfence_user_home"] = "/var/lib/hadoop-hdfs"
-        extra["hadoop::common_hdfs::sshfence_privkey"] = "../home/hdfs/.ssh/id_rsa"
-        extra["hadoop::common_hdfs::sshfence_pubkey"] = "../home/hdfs/.ssh/id_rsa.pub"
+        extra["hadoop::common_hdfs::sshfence_privkey"] = "id_rsa"
+        extra["hadoop::common_hdfs::sshfence_pubkey"] = "id_rsa.pub"
         extra["hadoop::common_hdfs::sshfence_user"] = "hdfs"
         extra["hadoop::common_hdfs::hadoop_ha_nameservice_id"] = "ha-nn-uri"
         extra["hadoop_cluster_node::hadoop_namenode_uri"] = "hdfs://%{hiera('hadoop_ha_nameservice_id')}:8020"
@@ -488,6 +497,12 @@ def install_ha_namenode():
         if is_state('auto.ha') and host.service_running('hadoop-hdfs-zkfc'):
             host.service_stop('hadoop-hdfs-zkfc')
         set_state('apache-bigtop-namenode.started')
+
+    # We need to create the 'mapred' user/group since we are not installing
+    # hadoop-mapreduce. This is needed so the namenode can access yarn
+    # job history files in hdfs. Also add our ubuntu user to the hadoop
+    # and mapred groups.
+    get_layer_opts().add_users()
 
     set_state('apache-bigtop-namenode.installed')
     hookenv.status_set('maintenance', 'namenode installed')

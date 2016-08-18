@@ -12,11 +12,8 @@ options:
     groups:
       - 'mapred'
       - 'yarn'
-      - 'hdfs'
       - 'hadoop'
     users:
-      hdfs:
-        groups: ['hdfs', 'hadoop', 'mapred']
       mapred:
         groups: ['hadoop', 'mapred']
       ubuntu:

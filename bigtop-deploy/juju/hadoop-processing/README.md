@@ -32,7 +32,7 @@ This bundle provides a complete deployment of the core components of the
 platform to perform distributed data analytics at scale.  These components
 include:
 
-  * NameNode (HDFS)
+  * NameNode (HDFS) in HA mode
   * ResourceManager (YARN)
   * Slaves (DataNode and NodeManager)
   * Client (Bigtop hadoop client)
