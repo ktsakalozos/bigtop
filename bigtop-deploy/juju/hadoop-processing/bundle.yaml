@@ -9,6 +9,7 @@ services:
       java-major: "8"
   zookeeper:
     charm: cs:trusty/zookeeper-1
+    num_units: 3
     annotations:
       gui-x: "250"
       gui-y: "800"
