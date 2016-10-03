@@ -15,10 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import amulet
 import os
 import unittest
+
 import yaml
+import amulet
 
 
 class TestBundle(unittest.TestCase):
@@ -26,16 +27,19 @@ class TestBundle(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # classmethod inheritance doesn't work quite right with
+        # setUpClass / tearDownClass, so subclasses have to manually call this
         cls.d = amulet.Deployment(series='xenial')
         with open(cls.bundle_file) as f:
             bun = f.read()
         bundle = yaml.safe_load(bun)
         cls.d.load(bundle)
-        cls.d.setup(timeout=1800)
-        cls.d.sentry.wait_for_messages({'flume-hdfs': 'Ready'}, timeout=1800)
+        cls.d.setup(timeout=3600)
+        cls.d.sentry.wait_for_messages({'client': 'ready'}, timeout=3600)
         cls.hdfs = cls.d.sentry['namenode'][0]
         cls.yarn = cls.d.sentry['resourcemanager'][0]
         cls.slave = cls.d.sentry['slave'][0]
+        cls.client = cls.d.sentry['client'][0]
         cls.kafka = cls.d.sentry['kafka'][0]
 
     def test_components(self):
@@ -45,32 +49,25 @@ class TestBundle(unittest.TestCase):
         hdfs, retcode = self.hdfs.run("pgrep -a java")
         yarn, retcode = self.yarn.run("pgrep -a java")
         slave, retcode = self.slave.run("pgrep -a java")
+        client, retcode = self.client.run("pgrep -a java")
         kafka, retcode = self.kafka.run("pgrep -a java")
 
         assert 'NameNode' in hdfs, "NameNode not started"
-        assert 'NameNode' not in yarn, "NameNode should not be running on resourcemanager"
         assert 'NameNode' not in slave, "NameNode should not be running on slave"
-        assert 'NameNode' not in kafka, "NameNode should not be running on kafka"
 
         assert 'ResourceManager' in yarn, "ResourceManager not started"
-        assert 'ResourceManager' not in hdfs, "ResourceManager should not be running on namenode"
         assert 'ResourceManager' not in slave, "ResourceManager should not be running on slave"
-        assert 'ResourceManager' not in kafka, "ResourceManager should not be running on kafka"
 
         assert 'JobHistoryServer' in yarn, "JobHistoryServer not started"
-        assert 'JobHistoryServer' not in hdfs, "JobHistoryServer should not be running on namenode"
         assert 'JobHistoryServer' not in slave, "JobHistoryServer should not be running on slave"
-        assert 'JobHistoryServer' not in kafka, "JobHistoryServer should not be running on kafka"
 
         assert 'NodeManager' in slave, "NodeManager not started"
         assert 'NodeManager' not in yarn, "NodeManager should not be running on resourcemanager"
         assert 'NodeManager' not in hdfs, "NodeManager should not be running on namenode"
-        assert 'NodeManager' not in kafka, "NodeManager should not be running on kafka"
 
         assert 'DataNode' in slave, "DataServer not started"
         assert 'DataNode' not in yarn, "DataNode should not be running on resourcemanager"
         assert 'DataNode' not in hdfs, "DataNode should not be running on namenode"
-        assert 'DataNode' not in kafka, "DataNode should not be running on kafka"
 
         assert 'Kafka' in kafka, 'Kafka should be running on kafka'
 
