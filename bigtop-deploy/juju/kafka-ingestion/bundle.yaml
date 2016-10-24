@@ -29,6 +29,7 @@ services:
   flume-hdfs:
     charm: cs:~bigdata-dev/trusty/apache-flume-hdfs-34
     num_units: 1
+    series: trusty
     annotations:
       gui-x: "1200"
       gui-y: "100"
@@ -36,6 +37,7 @@ services:
   flume-kafka:
     charm: cs:~bigdata-dev/trusty/apache-flume-kafka-9
     num_units: 1
+    series: trusty
     annotations:
       gui-x: "1500"
       gui-y: "100"
