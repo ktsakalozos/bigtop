@@ -6,7 +6,7 @@ services:
       gui-x: "500"
       gui-y: "800"
     to:
-      - "1"
+      - "0"
   resourcemanager:
     charm: "/home/ubuntu/charms/xenial/hadoop-resourcemanager"
     num_units: 1
@@ -14,7 +14,7 @@ services:
       gui-x: "500"
       gui-y: "0"
     to:
-      - "1"
+      - "0"
   slave:
     charm: "/home/ubuntu/charms/xenial/hadoop-slave"
     num_units: 3
@@ -22,9 +22,9 @@ services:
       gui-x: "0"
       gui-y: "400"
     to:
+      - "1"
       - "2"
       - "3"
-      - "4"
   plugin:
     charm: "/home/ubuntu/charms/xenial/hadoop-plugin"
     annotations:
@@ -37,7 +37,7 @@ services:
       gui-x: "1250"
       gui-y: "400"
     to:
-      - "5"
+      - "4"
   kafka:
     charm: "/home/ubuntu/charms/xenial/kafka"
     num_units: 1
@@ -45,17 +45,17 @@ services:
       gui-x: "1250"
       gui-y: "800"
     to:
-      - "5"
+      - "4"
   zookeeper:
-    charm: "cs:~charmers/trusty/zookeeper-1"
+    charm: "cs:xenial/zookeeper-1"
     num_units: 3
     annotations:
       gui-x: "500"
       gui-y: "400"
     to:
+      - "5"
       - "6"
       - "7"
-      - "8"
 # TODO: Charm bigtop flume/kafka
   flume-hdfs:
     charm: "cs:~bigdata-dev/xenial/apache-flume-hdfs-35"
@@ -64,39 +64,40 @@ services:
       gui-x: "1500"
       gui-y: "400"
     to:
-      - "5"
+      - "4"
 # NOTE: flume-kafka cannot be colocated with flume-hdfs as they both use /etc/flume/conf
   flume-kafka:
     charm: "cs:~bigdata-dev/trusty/apache-flume-kafka-9"
     num_units: 1
+    series: trusty
     annotations:
       gui-x: "1500"
       gui-y: "800"
     to:
-      - "9"
+      - "8"
   ganglia:
-    charm: "cs:trusty/ganglia-2"
+    charm: "cs:~bigdata-dev/xenial/ganglia-2"
     num_units: 1
     annotations:
       gui-x: "0"
       gui-y: "800"
     to:
-      - "9"
+      - "4"
   ganglia-node:
-    charm: "cs:~bigdata-dev/xenial/ganglia-node-2"
+    charm: "cs:~bigdata-dev/xenial/ganglia-node-4"
     annotations:
       gui-x: "250"
       gui-y: "400"
   rsyslog:
-    charm: "cs:trusty/rsyslog-10"
+    charm: "cs:~bigdata-dev/xenial/rsyslog-4"
     num_units: 1
     annotations:
       gui-x: "1000"
       gui-y: "800"
     to:
-      - "9"
+      - "4"
   rsyslog-forwarder-ha:
-    charm: "cs:~bigdata-dev/xenial/rsyslog-forwarder-ha-2"
+    charm: "cs:~bigdata-dev/xenial/rsyslog-forwarder-ha-6"
     annotations:
       gui-x: "750"
       gui-y: "400"
@@ -123,6 +124,9 @@ relations:
   - ["rsyslog-forwarder-ha:juju-info", "slave:juju-info"]
   - ["rsyslog:aggregator", "rsyslog-forwarder-ha:syslog"]
 machines:
+  "0":
+    constraints: "mem=7G"
+    series: "xenial"
   "1":
     constraints: "mem=7G"
     series: "xenial"
@@ -140,13 +144,10 @@ machines:
     series: "xenial"
   "6":
     constraints: "mem=3G"
-    series: "trusty"
+    series: "xenial"
   "7":
     constraints: "mem=3G"
-    series: "trusty"
+    series: "xenial"
   "8":
-    constraints: "mem=3G"
-    series: "trusty"
-  "9":
     constraints: "mem=3G"
     series: "trusty"
