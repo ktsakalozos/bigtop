@@ -39,7 +39,7 @@ services:
     to:
       - "4"
   kafka:
-    charm: "cs:xenial/kafka-0"
+    charm: "cs:xenial/kafka-1"
     num_units: 1
     annotations:
       gui-x: "1250"
