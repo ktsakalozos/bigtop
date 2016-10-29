@@ -29,17 +29,19 @@ of machines, each of which may be prone to failure.
 Apache Kafka is an open-source message broker project developed by the Apache
 Software Foundation written in Scala. The project aims to provide a unified,
 high-throughput, low-latency platform for handling real-time data feeds. Learn
-more at [kafka.apache.org](http://kafka.apache.org/).
+more at [kafka.apache.org][].
 
-This bundle provides a complete deployment of the core components of the
-[Apache Bigtop](http://bigtop.apache.org/)
-platform (along with Kafka) to perform distributed data processing at scale.
-Ganglia and rsyslog applications are also provided to monitor cluster health
-and syslog activity.
+This bundle provides a complete deployment of Hadoop and Kafka components from
+[Apache Bigtop][] that perform distributed data processing at scale. Ganglia
+and rsyslog applications are also provided to monitor cluster health and syslog
+activity.
+
+[kafka.apache.org]: http://kafka.apache.org/
+[Apache Bigtop]: http://bigtop.apache.org/
 
 ## Bundle Composition
 
-The applications that comprise this bundle are spread across 9 units as
+The applications that comprise this bundle are spread across 10 units as
 follows:
 
   * NameNode (HDFS)
@@ -50,11 +52,11 @@ follows:
   * Client (Hadoop endpoint)
   * Plugin (Facilitates communication with the Hadoop cluster)
     * Colocated on the Client unit
-  * Kafka
-    * Colocated on the Client unit
   * Flume-HDFS
     * Colocated on the Client unit
+  * Kafka
   * Flume-Kafka
+    * Colocated on the Kafka unit
   * Zookeeper
     * 3 separate units
   * Ganglia (Web interface for monitoring cluster metrics)
@@ -74,24 +76,46 @@ demands.
 # Deploying
 
 A working Juju installation is assumed to be present. If Juju is not yet set
-up, please follow the
-[getting-started](https://jujucharms.com/docs/2.0/getting-started)
-instructions prior to deploying this bundle.
+up, please follow the [getting-started][] instructions prior to deploying this
+bundle.
 
-Once ready, deploy this bundle with the `juju deploy` command:
+> **Note**: This bundle requires hardware resources that may exceed limits
+of Free-tier or Trial accounts on some clouds. To deploy to these
+environments, modify a local copy of [bundle.yaml][] to set
+`services: 'X': num_units: 1` and `machines: 'X': constraints: mem=3G` as
+needed to satisfy account limits.
+
+Deploy this bundle from the Juju charm store with the `juju deploy` command:
 
     juju deploy hadoop-kafka
 
 > **Note**: The above assumes Juju 2.0 or greater. If using an earlier version
-of Juju, use [juju-quickstart](https://launchpad.net/juju-quickstart) with the
-following syntax: `juju quickstart hadoop-kafka`.
+of Juju, use [juju-quickstart][] with the following syntax: `juju quickstart
+hadoop-kafka`.
+
+Alternatively, deploy a locally modified `bundle.yaml` with:
+
+    juju deploy /path/to/bundle.yaml
+
+> **Note**: The above assumes Juju 2.0 or greater. If using an earlier version
+of Juju, use [juju-quickstart][] with the following syntax: `juju quickstart
+/path/to/bundle.yaml`.
 
 The charms in this bundle can also be built from their source layers in the
 [Bigtop charm repository][].  See the [Bigtop charm README][] for instructions
 on building and deploying these charms locally.
 
+## Network-Restricted Environments
+Charms can be deployed in environments with limited network access. To deploy
+in this environment, configure a Juju model with appropriate proxy and/or
+mirror options. See [Configuring Models][] for more information.
+
+[getting-started]: https://jujucharms.com/docs/stable/getting-started
+[bundle.yaml]: https://github.com/apache/bigtop/blob/master/bigtop-deploy/juju/hadoop-spark/bundle.yaml
+[juju-quickstart]: https://launchpad.net/juju-quickstart
 [Bigtop charm repository]: https://github.com/apache/bigtop/tree/master/bigtop-packages/src/charm
 [Bigtop charm README]: https://github.com/apache/bigtop/blob/master/bigtop-packages/src/charm/README.md
+[Configuring Models]: https://jujucharms.com/docs/stable/models-config
 
 
 # Configuring
@@ -101,7 +125,7 @@ an existing Kafka topic as follows:
 
     juju config flume-kafka kafka_topic='<topic_name>'
 
-If desired, create a new topic (and verify successful creation) with:
+If no existing topic is available, create and verify a new topic with:
 
     juju run-action kafka/0 create-topic topic=<topic_name> \
      partitions=1 replication=1
@@ -114,38 +138,39 @@ HDFS in year-month-day directories here: `/user/flume/flume-kafka/%y-%m-%d`.
 # Verifying
 
 ## Status
-The applications that make up this bundle provide status messages to
-indicate when they are ready:
+The applications that make up this bundle provide status messages to indicate
+when they are ready:
 
     juju status
 
 This is particularly useful when combined with `watch` to track the on-going
 progress of the deployment:
 
-    watch -n 0.5 juju status
+    watch -n 2 juju status
 
 The message for each unit will provide information about that unit's state.
 Once they all indicate that they are ready, perform application smoke tests
 to verify that the bundle is working as expected.
 
 ## Smoke Test
-The charms for each core component (kafka, namenode, resourcemanager, and slave)
-provide a `smoke-test` action that can be used to verify the application is
-functioning as expected. Note that the 'slave' component runs extensive
-tests provided by Apache Bigtop and may take up to 30 minutes to complete.
-Run the smoke-test actions as follows:
+The charms for each core component (namenode, resourcemanager, slave, kafka,
+and zookeeper) provide a `smoke-test` action that can be used to verify the
+application is functioning as expected. Note that the 'slave' component runs
+extensive tests provided by Apache Bigtop and may take up to 30 minutes to
+complete. Run the smoke-test actions as follows:
 
-    juju run-action kafka/0 smoke-test
     juju run-action namenode/0 smoke-test
     juju run-action resourcemanager/0 smoke-test
     juju run-action slave/0 smoke-test
+    juju run-action kafka/0 smoke-test
+    juju run-action zookeeper/0 smoke-test
 
 > **Note**: The above assumes Juju 2.0 or greater. If using an earlier version
 of Juju, the syntax is `juju action do <application>/0 smoke-test`.
 
 Watch the progress of the smoke test actions with:
 
-    watch -n 0.5 juju show-action-status
+    watch -n 2 juju show-action-status
 
 > **Note**: The above assumes Juju 2.0 or greater. If using an earlier version
 of Juju, the syntax is `juju action status`.
@@ -159,21 +184,53 @@ more information about a specific smoke test with:
 > **Note**: The above assumes Juju 2.0 or greater. If using an earlier version
 of Juju, the syntax is `juju action fetch <action-id>`.
 
+## Utilities
+Applications in this bundle include command line and web utilities that
+can be used to verify information about the cluster.
+
+From the command line, show the HDFS dfsadmin report and view the current list
+of YARN NodeManager units with the following:
+
+    juju run --application namenode "su hdfs -c 'hdfs dfsadmin -report'"
+    juju run --application resourcemanager "su yarn -c 'yarn node -list'"
+
+Show the list of Zookeeper nodes with the following:
+
+    juju run --unit zookeeper/0 'echo "ls /" | /usr/lib/zookeeper/bin/zkCli.sh'
+
+To access the HDFS web console, find the `PUBLIC-ADDRESS` of the namenode
+application and expose it:
+
+    juju status namenode
+    juju expose namenode
+
+The web interface will be available at the following URL:
+
+    http://NAMENODE_PUBLIC_IP:50070
+
+Similarly, to access the Resource Manager web consoles, find the
+`PUBLIC-ADDRESS` of the resourcemanager application and expose it:
+
+    juju status resourcemanager
+    juju expose resourcemanager
+
+The YARN and Job History web interfaces will be available at the following URLs:
+
+    http://RESOURCEMANAGER_PUBLIC_IP:8088
+    http://RESOURCEMANAGER_PUBLIC_IP:19888
+
 
 # Monitoring
 
 This bundle includes Ganglia for system-level monitoring of the namenode,
-resourcemanager, slave, and client units. Metrics are sent to a centralized
-ganglia unit for easy viewing in a browser. To view the ganglia web interface,
-first expose the service:
-
-    juju expose ganglia
-
-Now find the ganglia public IP address:
+resourcemanager, slave, kafka, and zookeeper units. Metrics are sent to a
+centralized ganglia unit for easy viewing in a browser. To view the ganglia web
+interface, find the `PUBLIC-ADDRESS` of the Ganglia application and expose it:
 
     juju status ganglia
+    juju expose ganglia
 
-The ganglia web interface will be available at:
+The web interface will be available at:
 
     http://GANGLIA_PUBLIC_IP/ganglia
 
@@ -181,10 +238,9 @@ The ganglia web interface will be available at:
 # Logging
 
 This bundle includes rsyslog to collect syslog data from the namenode,
-resourcemanager, slave, and client units. These logs are sent to a
-centralized rsyslog unit for easy syslog analysis of the units that make up
-the Hadoop cluster. One method of viewing this log data is to simply cat syslog
-from the rsyslog unit:
+resourcemanager, slave, kafka, and zookeeper units. These logs are sent to a
+centralized rsyslog unit for easy syslog analysis. One method of viewing this
+log data is to simply cat syslog from the rsyslog unit:
 
     juju run --unit rsyslog/0 'sudo cat /var/log/syslog'
 
@@ -244,26 +300,17 @@ run with `juju run-action`:
 
 # Scaling
 
-By default, three slave and zookeeper units and one unit of each of the other
-components are deployed with this bundle. To scale the cluster, simply add
-more units of an application. For example, add one more unit of Kafka and
-the Hadoop Slave:
+By default, three Hadoop slave, one Kafka, and three zookeeper units are
+deployed with this bundle. Scaling these applications is as simple as adding
+more units. To add one unit:
 
     juju add-unit kafka
     juju add-unit slave
+    juju add-unit zookeeper
 
 Multiple units may be added at once.  For example, add four more slave units:
 
     juju add-unit -n4 slave
-
-
-# Network-Restricted Environments
-
-Charms can be deployed in environments with limited network access. To deploy
-in this environment, configure a Juju model with appropriate
-proxy and/or mirror options. See
-[Configuring Models](https://jujucharms.com/docs/2.0/models-config) for more
-information.
 
 
 # Contact Information

@@ -117,11 +117,15 @@ relations:
   - ["ganglia-node:juju-info", "namenode:juju-info"]
   - ["ganglia-node:juju-info", "resourcemanager:juju-info"]
   - ["ganglia-node:juju-info", "slave:juju-info"]
+  - ["ganglia-node:juju-info", "kafka:juju-info"]
+  - ["ganglia-node:juju-info", "zookeeper:juju-info"]
   - ["ganglia:node", "ganglia-node:node"]
   - ["rsyslog-forwarder-ha:juju-info", "client:juju-info"]
   - ["rsyslog-forwarder-ha:juju-info", "namenode:juju-info"]
   - ["rsyslog-forwarder-ha:juju-info", "resourcemanager:juju-info"]
   - ["rsyslog-forwarder-ha:juju-info", "slave:juju-info"]
+  - ["rsyslog-forwarder-ha:juju-info", "kafka:juju-info"]
+  - ["rsyslog-forwarder-ha:juju-info", "zookeeper:juju-info"]
   - ["rsyslog:aggregator", "rsyslog-forwarder-ha:syslog"]
 machines:
   "0":
@@ -137,7 +141,7 @@ machines:
     constraints: "mem=7G"
     series: "xenial"
   "4":
-    constraints: "mem=3G"
+    constraints: "mem=7G"
     series: "xenial"
   "5":
     constraints: "mem=3G"
