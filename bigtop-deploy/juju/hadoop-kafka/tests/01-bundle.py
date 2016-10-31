@@ -51,7 +51,6 @@ class TestBundle(unittest.TestCase):
                                         'namenode': re.compile('ready'),
                                         'resourcemanager': re.compile('ready'),
                                         'slave': re.compile('ready'),
-                                        'spark': re.compile('ready'),
                                         }, timeout=3600)
         cls.hdfs = cls.d.sentry['namenode'][0]
         cls.yarn = cls.d.sentry['resourcemanager'][0]
