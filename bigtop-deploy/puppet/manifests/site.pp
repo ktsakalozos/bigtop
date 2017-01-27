@@ -28,15 +28,10 @@ case $operatingsystem {
     }
 }
 
+$jdk_preinstalled = hiera("bigtop::jdk_preinstalled", false)
 $jdk_package_name = hiera("bigtop::jdk_package_name", "jdk")
 
 stage {"pre": before => Stage["main"]}
-
-# as discussed in BIGTOP-2339 we'll have to enforce init.d until such time 
-# we have a conceptually more welcoming environment for systemd
-Service {
-  provider => init,
-}
 
 case $operatingsystem {
     /(OracleLinux|Amazon|CentOS|Fedora|RedHat)/: {
@@ -70,9 +65,8 @@ case $operatingsystem {
 package { $jdk_package_name:
   ensure => "installed",
   alias => "jdk",
+  noop => $jdk_preinstalled,
 }
-
-import "cluster.pp"
 
 node default {
 

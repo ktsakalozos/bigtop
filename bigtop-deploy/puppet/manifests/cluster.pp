@@ -52,9 +52,13 @@ $roles_map = {
     master => ["spark-master"],
     worker => ["spark-worker"],
   },
-  tachyon => {
-    master => ["tachyon-master"],
-    worker => ["tachyon-worker"],
+  alluxio => {
+    master => ["alluxio-master"],
+    worker => ["alluxio-worker"],
+  },
+  flink => {
+    master => ["flink-jobmanager"],
+    worker => ["flink-taskmanager"],
   },
   flume => {
     worker => ["flume-agent"],
@@ -93,6 +97,7 @@ $roles_map = {
     client => ["pig-client"],
   },
   hive => {
+    master => ["hive-server2", "hive-metastore"],
     client => ["hive-client"],
   },
   tez => {
@@ -113,6 +118,13 @@ $roles_map = {
     worker => ["qfs-chunkserver"],
     client => ["qfs-client"],
   },
+  gpdb => {
+    master => ["gpdb-master"],
+    worker => ["gpdb-segment"],
+  },
+  kafka => {
+    master => ["kafka-server"],
+  }
 }
 
 class hadoop_cluster_node (
@@ -158,8 +170,10 @@ class node_with_roles ($roles = hiera("bigtop::roles")) inherits hadoop_cluster_
   }
 
   $modules = [
+    "alluxio",
     "apex",
     "crunch",
+    "flink",
     "giraph",
     "hadoop",
     "hadoop_hbase",
@@ -175,12 +189,13 @@ class node_with_roles ($roles = hiera("bigtop::roles")) inherits hadoop_cluster_
     "mahout",
     "solr",
     "spark",
-    "tachyon",
     "qfs",
     "tez",
     "ycsb",
     "kerberos",
-    "zeppelin"
+    "zeppelin",
+    "kafka",
+    "gpdb"
   ]
 
   deploy_module { $modules:

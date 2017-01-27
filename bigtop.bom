@@ -42,7 +42,7 @@
    }
    apache { // *required* These shoudn't be modified unless ASF Infra demands changes
      APACHE_MIRROR = "http://apache.osuosl.org"
-     APACHE_ARCHIVE = "http://archive.apache.org/dist"
+     APACHE_ARCHIVE = "https://archive.apache.org/dist"
    }
    components { *required; preserve the name* if empty, nothing will be built
      'label' { // label *SHOULD* be the same as the name; otherwise some tasks will fail
@@ -52,7 +52,10 @@
        // 'base' is required; [pkg := base ]; [release := 1 ]
        version { base  = 'x.y.z'; pkg   = base; release = 1 }
        tarball {
-         source      = "apache-component1-${version.base}.tar.gz" // *optional*
+         source      = "apache-component1-${version.base}.tar.gz"
+         // It is advised to use different destination filenames to avoid
+         // clashes when working with git repos and downloading the artifacts
+         // from the branches with the same names.
          destination = source
        }
        url { // *optional*
@@ -70,11 +73,11 @@ bigtop {
   version = "1.2.0-SNAPSHOT"
   stack {
     'jdk' { version = '1.7'; version_base = version }
-    'scala' { version = '2.10.4'; version_base = version }
+    'scala' { version = '2.11.8'; version_base = version }
   }
   apache {
-    APACHE_MIRROR = "http://apache.osuosl.org"
-    APACHE_ARCHIVE = "http://archive.apache.org/dist"
+    APACHE_MIRROR = "https://www-us.apache.org"
+    APACHE_ARCHIVE = "https://archive.apache.org/dist"
   }
 /** End of Base Configuration */
 
@@ -89,8 +92,8 @@ bigtop {
   dependencies = [
     zookeeper:['hadoop', 'hbase'],
     hadoop:['ignite-hadoop', 'hbase', 'crunch', 'pig', 'hive', 'tez', 'sqoop', 'sqoop2',
-      'oozie', 'mahout', 'flume', 'giraph', 'solr', 'crunch', 'spark',
-      'phoenix', 'tachyon', 'kafka', 'ycsb', 'kite', 'hama', 'zeppelin',
+      'oozie', 'mahout', 'flume', 'giraph', 'solr', 'crunch', 'spark','spark1',
+      'phoenix', 'alluxio', 'kafka', 'ycsb', 'kite', 'hama', 'zeppelin',
       'tajo', 'apex'
     ],
     hbase:['phoenix','giraph','ycsb','hive'],
@@ -122,7 +125,7 @@ bigtop {
     'hadoop' {
       name    = 'hadoop'
       relNotes = 'Apache Hadoop'
-      version { base = '2.7.2'; pkg = base; release = 1 }
+      version { base = '2.7.3'; pkg = base; release = 1 }
       tarball { destination = "${name}-${version.base}.tar.gz"
                 source      = "${name}-${version.base}-src.tar.gz" }
       url     { download_path = "/$name/common/$name-${version.base}"
@@ -205,7 +208,7 @@ bigtop {
     'oozie' {
       name    = 'oozie'
       relNotes = 'Apache Oozie'
-      version { base = '4.2.0'; pkg = base; release = 1 }
+      version { base = '4.3.0'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}.tar.gz"
                 source      = destination }
       url     { download_path = "/$name/${version.base}/"
@@ -215,7 +218,7 @@ bigtop {
     'mahout' {
       name    = 'mahout'
       relNotes = 'Apache Mahout'
-      version { base = '0.11.1'; pkg = base; release = 1 }
+      version { base = '0.12.2'; pkg = base; release = 1 }
       tarball { destination = "apache-$name-distribution-${version.base}-src.tar.gz"
                 source      = destination }
       url     { download_path = "/$name/${version.base}/"
@@ -225,7 +228,7 @@ bigtop {
     'flume' {
       name    = 'flume'
       relNotes = 'Apache Flume'
-      version { base = '1.6.0'; pkg = base; release = 1 }
+      version { base = '1.7.0'; pkg = base; release = 1 }
       tarball { destination = "apache-$name-${version.base}-src.tar.gz"
                 source      = destination }
       url     { download_path = "/$name/${version.base}/"
@@ -264,7 +267,7 @@ bigtop {
     'solr' {
       name    = 'solr'
       relNotes = 'Apache Solr'
-      version { base = '4.9.0'; pkg = base; release = 1 }
+      version { base = '4.10.4'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}-src.tgz"
                 source      = destination }
       url     { download_path = "lucene/$name/${version.base}"
@@ -281,11 +284,22 @@ bigtop {
                 site = "${apache.APACHE_MIRROR}/${download_path}"
                 archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
     }
+    'spark1' {
+      name    = 'spark1'
+      pkg     = 'spark-core'
+      relNotes = 'Apache Spark'
+      version { base = '1.6.2'; pkg = base; release = 1 }
+      tarball { destination = "spark-${version.base}.tar.gz"
+                source      = "spark-${version.base}.tgz" }
+      url     { download_path = "/spark/spark-${version.base}"
+                site = "${apache.APACHE_MIRROR}/${download_path}"
+                archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
+    }
     'spark' {
       name    = 'spark'
       pkg     = 'spark-core'
       relNotes = 'Apache Spark'
-      version { base = '1.5.1'; pkg = base; release = 1 }
+      version { base = '2.0.2'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}.tar.gz"
                 source      = "$name-${version.base}.tgz" }
       url     { download_path = "/$name/$name-${version.base}"
@@ -296,7 +310,7 @@ bigtop {
     'flink' {
       name    = 'flink'
       relNotes = 'Apache Flink'
-      version { base = '1.0.0'; pkg = base; release = 1 }
+      version { base = '1.0.3'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}.tar.gz"
                 source      = "$name-${version.base}-src.tgz" }
       url     { download_path = "/$name/$name-${version.base}"
@@ -314,10 +328,10 @@ bigtop {
        * HBase version in the BOM.
        */
       phoenix.hbase ='HBase-1.1'
-      version { base = "4.7.0-${phoenix.hbase}"; pkg = '4.7.0'; release = 1 }
+      version { base = "4.8.1-${phoenix.hbase}"; pkg = '4.8.1'; release = 1 }
       tarball { destination = "$name-${version.base}-src.tar.gz"
-                source      = destination }
-      url     { download_path = "/$name/$name-${version.base}/src"
+                source      = "apache-$name-${version.base}-src.tar.gz" }
+      url     { download_path = "/$name/apache-$name-${version.base}/src"
                 site = "${apache.APACHE_MIRROR}/${download_path}"
                 archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
     }
@@ -327,7 +341,7 @@ bigtop {
       relNotes = "Groovy: a dynamic language for the Java platform"
       tarball { destination = "$name-${version.base}.tar.gz";
                 source      = "apache-groovy-binary-${version.base}.zip"}
-      url     { site = "http://dl.bintray.com/groovy/maven/"; archive = site }
+      url     { site = "https://dl.bintray.com/groovy/maven/"; archive = site }
       // Optional, as only null values are specified
       git     { repo = null; ref = null; dir = null}
     }
@@ -357,20 +371,20 @@ bigtop {
                 site = "${apache.APACHE_MIRROR}/${download_path}"
                 archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
     }
-    'tachyon' {
-      name    = "tachyon"
-      pkg     = "tachyon-tfs"
-      relNotes = "Tachyon: a memory-centric distributed file system"
-      version { base = '0.6.0'; pkg = base; release = 1 }
+    'alluxio' {
+      name    = "alluxio"
+      pkg     = "alluxio"
+      relNotes = "Alluxio: a memory-centric distributed file system"
+      version { base = '1.0.1'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}.tar.gz"
                 source      = "v${version.base}.tar.gz" }
-      url     { site = "https://github.com/amplab/tachyon/archive"
+      url     { site = "https://github.com/Alluxio/alluxio/archive"
                 archive = site }
     }
     'kafka' {
       name    = 'kafka'
       relNotes = 'Apache Kafka'
-      version { base = '0.8.1.1'; pkg = base; release = 1 }
+      version { base = '0.10.0.0'; pkg = base; release = 1 }
       tarball { destination = "$name-${version.base}.tar.gz"
                 source      = "$name-${version.base}-src.tgz" }
       url     { download_path = "/$name/${version.base}/"
@@ -407,11 +421,11 @@ bigtop {
     }
     'zeppelin' {
       name    = 'zeppelin'
-      relNotes = 'Apache Zeppelin (incubating)'
-      version { base = '0.5.6'; pkg = base; release = 1 }
-      tarball { source      = "$name-${version.base}-incubating.tgz"
+      relNotes = 'Apache Zeppelin'
+      version { base = '0.6.2'; pkg = base; release = 1 }
+      tarball { source      = "$name-${version.base}.tgz"
                 destination = "$name-${version.base}.tar.gz" }
-      url     { download_path = "/incubator/$name/${version.base}-incubating/"
+      url     { download_path = "/$name/$name-${version.base}/"
                 site = "${apache.APACHE_MIRROR}/${download_path}"
                 archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
     }
@@ -427,11 +441,11 @@ bigtop {
     }
     'apex' {
       name    = 'apex'
-      relNotes = 'Apache Apex (incubating)'
-      version { base = '3.3.0'; pkg = base; release = 1 }
-      tarball { source      = "$name-${version.base}-incubating-source-release.tar.gz"
+      relNotes = 'Apache Apex'
+      version { base = '3.4.0'; pkg = base; release = 1 }
+      tarball { source      = "$name-${version.base}-source-release.tar.gz"
                 destination = "$name-${version.base}.tar.gz" }
-      url     { download_path = "/incubator/$name/v${version.base}-incubating/"
+      url     { download_path = "/incubator/$name/v${version.base}/"
                 site = "${apache.APACHE_MIRROR}/${download_path}"
                 archive = "${apache.APACHE_ARCHIVE}/${download_path}" }
     }
@@ -443,6 +457,16 @@ bigtop {
                 source      = "${version.base}.tar.gz" }
       url     { site = "https://github.com/quantcast/qfs/archive"
                 archive = site }
+    }
+    'gpdb' {
+      name    = 'gpdb'
+      relNotes = 'GreenPlum'
+      version { base = '4.3.99.0'; pkg = base; release = 1 }
+      tarball { source      = "master.zip"
+                destination = "$name-${version.base}.tar.gz" }
+      url     { download_path = "pub/greenplum/$name/"
+                site = "https://github.com/greenplum-db/gpdb/archive"
+                archive = "site" }
     }
   }
 }

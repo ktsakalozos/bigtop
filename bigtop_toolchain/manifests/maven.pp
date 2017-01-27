@@ -26,13 +26,13 @@ class bigtop_toolchain::maven {
 
   exec {"/bin/tar xvzf /usr/src/$mvn-bin.tar.gz":
     cwd         => '/usr/local',
-    refreshonly => true,
+    creates     => "/usr/local/$mvn",
     require     => Exec["/usr/bin/wget $apache_prefix/maven/maven-3/$mvnversion/binaries/$mvn-bin.tar.gz"],
   }
   
   file {'/usr/local/maven':
     ensure  => link,
-    target  => "/usr/local/apache-maven-$mvnversion",
+    target  => "/usr/local/$mvn",
     require => Exec["/bin/tar xvzf /usr/src/$mvn-bin.tar.gz"],
   }
 }
