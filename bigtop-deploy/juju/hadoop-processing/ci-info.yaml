@@ -1,1 +1,15 @@
-ci-info.yaml
+bundle:
+  name: hadoop-processing
+  namespace: kos.tsakalozos
+  release: true
+  to-channel: beta
+charm-upgrade:
+  openjdk:
+    from-channel: edge
+    release: false
+    to-channel: beta
+  ubuntu-devenv:
+    from-channel: edge
+    release: false
+    to-channel: beta
+    
